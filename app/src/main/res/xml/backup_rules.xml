@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+   Sample backup rules.
+-->
+<full-backup-content>
+    <include domain="file" path="."/>
+    <exclude domain="file" path="device_config.xml"/>
+</full-backup-content>

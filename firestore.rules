@@ -1,0 +1,104 @@
+rules_version = '2';
+
+// =============================================================================
+// Règles de sécurité Firestore — Remindly (com.remindly)
+// -----------------------------------------------------------------------------
+// Modèle : Room (local) est la source de vérité qui pilote alarmes/geofences.
+// Firestore ne sert que de TRANSPORT pour la collaboration « contribution seule ».
+//
+// Collections gouvernées :
+//   users/{uid}                    -> profil + ANNUAIRE (résolution email -> uid)
+//   users/{uid}/shared_lists/**    -> copie cloud PRIVÉE du propriétaire (scaffold)
+//   shared_reminders/{docId}       -> rappels partagés (senderId --> receiverId)
+//
+// Rappel : les règles NE SONT PAS des filtres. Les requêtes de l'app doivent
+// elles-mêmes filtrer (senderId==uid / receiverId==uid), sinon Firestore rejette
+// la requête entière. FirestoreDataSource respecte déjà cette contrainte.
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------- Helpers -----------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // L'appelant est expéditeur OU destinataire du rappel partagé visé.
+    function isSharedParty(res) {
+      return isSignedIn() && (
+        res.data.senderId == request.auth.uid ||
+        res.data.receiverId == request.auth.uid
+      );
+    }
+
+    // ------------------------- users/{uid} ----------------------------------
+    match /users/{uid} {
+
+      // Lecture ouverte à tout compte connecté : indispensable à getUserIdByEmail
+      // (email -> uid) avant l'envoi d'un rappel. Compromis assumé : un compte
+      // authentifié peut énumérer l'annuaire (champs email + name). Cf. note de
+      // durcissement possible dans le message d'accompagnement.
+      allow read: if isSignedIn();
+
+      // Écriture du profil : soi-même uniquement, et l'email DOIT correspondre au
+      // jeton d'authentification. Empêche d'usurper l'email d'un tiers dans
+      // l'annuaire (sinon les rappels adressés à cet email seraient détournés).
+      // saveUserProfile n'est appelé qu'après connexion Google avec un email non
+      // nul, donc request.auth.token.email est toujours présent sur ce chemin.
+      allow create, update: if isSelf(uid)
+        && request.resource.data.keys().hasOnly(['email', 'name'])
+        && request.resource.data.email is string
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.name is string;
+
+      // Aucun chemin applicatif ne supprime un profil.
+      allow delete: if false;
+
+      // --- Sous-arbre PRIVÉ du propriétaire -----------------------------------
+      // Tous les accès du code (getSharedListsForUser, saveReminderInSharedList)
+      // sont scopés à userId == currentUser.uid. On verrouille donc au propriétaire.
+      match /shared_lists/{listId} {
+        allow read, write: if isSelf(uid);
+
+        match /reminders/{reminderId} {
+          allow read, write: if isSelf(uid);
+        }
+      }
+    }
+
+    // ---------------------- shared_reminders/{docId} ------------------------
+    match /shared_reminders/{docId} {
+
+      // Lecture : expéditeur (vue sortante) ou destinataire (ingestion Room).
+      allow read: if isSharedParty(resource);
+
+      // Création : le créateur est forcément l'expéditeur ; receiverId requis.
+      // hasOnly borne les champs au schéma écrit par saveSharedReminder.
+      allow create: if isSignedIn()
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.receiverId is string
+        && request.resource.data.receiverId.size() > 0
+        && request.resource.data.keys().hasOnly([
+             'receiverId', 'senderId', 'senderName', 'text', 'status',
+             'pinned', 'createdAt', 'triggerType', 'triggerTimeMillis',
+             'placeLat', 'placeLng', 'placeRadiusM', 'placeLabel'
+           ]);
+
+      // Mise à jour : expéditeur OU destinataire (politique produit confirmée).
+      // senderId / receiverId sont IMMUABLES -> pas de réattribution du rappel.
+      allow update: if isSharedParty(resource)
+        && request.resource.data.senderId == resource.data.senderId
+        && request.resource.data.receiverId == resource.data.receiverId;
+
+      // Suppression : expéditeur (retrait de sa contribution) ou destinataire.
+      allow delete: if isSharedParty(resource);
+    }
+
+    // Tout le reste : refus par défaut (aucune règle => accès interdit).
+  }
+}
