@@ -32,6 +32,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
+import com.remindly.data.settings.VoiceAlarmSettings
+import com.remindly.data.settings.VoiceAlarmSettingsRepository
+
 data class PlacePickerUiState(
     val searchQuery: String = "",
     val isSearching: Boolean = false,
@@ -42,6 +45,7 @@ data class PlacePickerUiState(
 @HiltViewModel
 class PlacePickerViewModel @Inject constructor(
     private val savedPlaceRepository: SavedPlaceRepository,
+    private val settingsRepository: VoiceAlarmSettingsRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -50,6 +54,13 @@ class PlacePickerViewModel @Inject constructor(
 
     private val _currentLocation = MutableStateFlow<LatLng?>(null)
     val currentLocation: StateFlow<LatLng?> = _currentLocation.asStateFlow()
+
+    val userSettings: StateFlow<VoiceAlarmSettings> = settingsRepository.settingsFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = VoiceAlarmSettings()
+        )
 
     // Emet un IntentSender quand le GPS est éteint → l'écran affiche le dialogue système
     private val _locationSettingsResolution = MutableStateFlow<IntentSender?>(null)

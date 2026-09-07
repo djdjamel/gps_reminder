@@ -46,6 +46,7 @@ fun SettingsScreen(
     val isTestingVolume by viewModel.isTestingVolume.collectAsStateWithLifecycle()
 
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var showCommuteDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -133,7 +134,7 @@ fun SettingsScreen(
                         value = settings.volume,
                         onValueChange = { viewModel.updateVolume(it) },
                         valueRange = 0.05f..1.0f,
-                        steps = 18, // Pas de 5%
+                        steps = 18,
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -185,7 +186,6 @@ fun SettingsScreen(
 
                     Spacer(Modifier.height(12.dp))
 
-                    // Options de répétition (1x, 2x, 3x, 5x, Boucle)
                     val repeatOptions = listOf(
                         1 to "1 fois",
                         2 to "2 fois",
@@ -296,12 +296,132 @@ fun SettingsScreen(
                 }
             }
 
-            // ─── Section 2 : Canaux Système ───────────────────────────────────
+            // ─── Section 2 : Trajet Habituel & Périmètre POI ───────────────────
+            SettingsCard(
+                title = "Trajet & Périmètre des Lieux",
+                subtitle = "Configuration pour les rappels par catégorie (supérettes, etc.)",
+                icon = Icons.Filled.DirectionsCar,
+                iconColor = MaterialTheme.colorScheme.secondary
+            ) {
+                // A. Trajet Habituel
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.AltRoute,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    "Mon trajet habituel",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    if (settings.hasCommuteRoute)
+                                        "${settings.commuteStartLabel ?: "Départ"} ➔ ${settings.commuteEndLabel ?: "Arrivée"}"
+                                    else "Aucun trajet configuré",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (settings.hasCommuteRoute) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = if (settings.hasCommuteRoute) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            }
+                        }
+
+                        FilledTonalButton(
+                            onClick = { showCommuteDialog = true },
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(if (settings.hasCommuteRoute) "Modifier" else "Définir")
+                        }
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                // B. Rayon de détection POI
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.NearMe,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                "Périmètre de recherche POI",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                "Rayon maximal autour de vous pour trouver les commerces",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    val radiusOptions = listOf(
+                        1 to "1 km (Piéton)",
+                        2 to "2 km",
+                        3 to "3 km (Défaut)",
+                        5 to "5 km",
+                        10 to "10 km"
+                    )
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        radiusOptions.forEach { (radiusKm, label) ->
+                            val isSelected = settings.poiSearchRadiusKm == radiusKm
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.updatePoiRadius(radiusKm) },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                leadingIcon = if (isSelected) {
+                                    {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null,
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ─── Section 3 : Canaux Système ───────────────────────────────────
             SettingsCard(
                 title = "Notifications Système",
                 subtitle = "Sonneries par défaut pour les rappels sans voix",
                 icon = Icons.Filled.Notifications,
-                iconColor = MaterialTheme.colorScheme.secondary
+                iconColor = MaterialTheme.colorScheme.tertiary
             ) {
                 SettingsActionRow(
                     title = "Canal Rappels Programmés (Temps)",
@@ -332,12 +452,12 @@ fun SettingsScreen(
                 )
             }
 
-            // ─── Section 3 : Compte ───────────────────────────────────────────
+            // ─── Section 4 : Compte ───────────────────────────────────────────
             SettingsCard(
                 title = "Compte & Session",
                 subtitle = "Gestion de votre profil Remindly",
                 icon = Icons.Filled.AccountCircle,
-                iconColor = MaterialTheme.colorScheme.tertiary
+                iconColor = MaterialTheme.colorScheme.primary
             ) {
                 Row(
                     modifier = Modifier
@@ -378,6 +498,83 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(16.dp))
         }
+    }
+
+    // Dialogue de configuration du trajet habituel
+    if (showCommuteDialog) {
+        var startLabel by remember { mutableStateOf(settings.commuteStartLabel ?: "Domicile") }
+        var startLat by remember { mutableStateOf(settings.commuteStartLat?.toString() ?: "48.8566") }
+        var startLng by remember { mutableStateOf(settings.commuteStartLng?.toString() ?: "2.3522") }
+
+        var endLabel by remember { mutableStateOf(settings.commuteEndLabel ?: "Bureau") }
+        var endLat by remember { mutableStateOf(settings.commuteEndLat?.toString() ?: "48.8924") }
+        var endLng by remember { mutableStateOf(settings.commuteEndLng?.toString() ?: "2.2366") }
+
+        AlertDialog(
+            onDismissRequest = { showCommuteDialog = false },
+            title = { Text("Définir mon trajet habituel") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "Indiquez vos points de départ et d'arrivée habituels (ex: Domicile ➔ Travail).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = startLabel,
+                        onValueChange = { startLabel = it },
+                        label = { Text("Point de départ (ex: Domicile)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = endLabel,
+                        onValueChange = { endLabel = it },
+                        label = { Text("Point d'arrivée (ex: Bureau)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val sLat = startLat.toDoubleOrNull() ?: 48.8566
+                        val sLng = startLng.toDoubleOrNull() ?: 2.3522
+                        val eLat = endLat.toDoubleOrNull() ?: 48.8924
+                        val eLng = endLng.toDoubleOrNull() ?: 2.2366
+
+                        viewModel.setCommuteStart(sLat, sLng, startLabel)
+                        viewModel.setCommuteEnd(eLat, eLng, endLabel)
+                        showCommuteDialog = false
+                    }
+                ) {
+                    Text("Enregistrer")
+                }
+            },
+            dismissButton = {
+                if (settings.hasCommuteRoute) {
+                    TextButton(
+                        onClick = {
+                            viewModel.clearCommuteRoute()
+                            showCommuteDialog = false
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Effacer le trajet")
+                    }
+                } else {
+                    TextButton(onClick = { showCommuteDialog = false }) {
+                        Text("Annuler")
+                    }
+                }
+            }
+        )
     }
 
     // Dialogue de confirmation de déconnexion

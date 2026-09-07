@@ -61,6 +61,30 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updatePoiRadius(radiusKm: Int) {
+        viewModelScope.launch {
+            settingsRepository.setPoiSearchRadius(radiusKm)
+        }
+    }
+
+    fun setCommuteStart(lat: Double, lng: Double, label: String) {
+        viewModelScope.launch {
+            settingsRepository.setCommuteStart(lat, lng, label)
+        }
+    }
+
+    fun setCommuteEnd(lat: Double, lng: Double, label: String) {
+        viewModelScope.launch {
+            settingsRepository.setCommuteEnd(lat, lng, label)
+        }
+    }
+
+    fun clearCommuteRoute() {
+        viewModelScope.launch {
+            settingsRepository.clearCommuteRoute()
+        }
+    }
+
     fun testVolume() {
         if (_isTestingVolume.value) {
             stopPreview()

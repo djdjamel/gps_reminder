@@ -36,6 +36,8 @@ data class ReminderEntity(
     val placeRadiusM: Float? = null,
     val savedPlaceId: Long? = null,
     val placeLabel: String? = null,
+    val placeCategory: String? = null,
+    val categoryRefType: String? = null,
     
     val syncState: SyncState = SyncState.SYNCED,
     val sortOrder: Int = 0

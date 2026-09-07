@@ -151,13 +151,17 @@ fun ReminderDetailScreen(
                     )
 
                     // Chip Lieu
+                    val hasPlace = uiState.placeLat != null || uiState.placeCategory != null
                     val placeLabel = uiState.placeLabel ?: "Définir un lieu"
                     FilterChip(
-                        selected = uiState.placeLat != null,
+                        selected = hasPlace,
                         onClick = { onNavigateToPlacePicker() },
                         label = { Text(placeLabel) },
-                        leadingIcon = { Icon(Icons.Filled.LocationOn, null, Modifier.size(18.dp)) },
-                        trailingIcon = if (uiState.placeLat != null) {
+                        leadingIcon = {
+                            val icon = if (uiState.placeCategory != null) Icons.Filled.ShoppingCart else Icons.Filled.LocationOn
+                            Icon(icon, null, Modifier.size(18.dp))
+                        },
+                        trailingIcon = if (hasPlace) {
                             {
                                 Icon(
                                     Icons.Filled.Close, "Supprimer le lieu",

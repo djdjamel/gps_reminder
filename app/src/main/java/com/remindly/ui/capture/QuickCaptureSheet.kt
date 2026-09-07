@@ -12,11 +12,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -142,13 +138,17 @@ fun QuickCaptureSheet(
                 )
 
                 // Chip Lieu
+                val hasPlace = uiState.placeLat != null || uiState.placeCategory != null
                 val placeLabel = uiState.placeLabel ?: "Ajouter un lieu"
                 FilterChip(
-                    selected = uiState.placeLat != null,
+                    selected = hasPlace,
                     onClick = { onNavigateToPlacePicker() },
                     label = { Text(placeLabel) },
-                    leadingIcon = { Icon(Icons.Filled.LocationOn, null, Modifier.size(18.dp)) },
-                    trailingIcon = if (uiState.placeLat != null) {
+                    leadingIcon = {
+                        val icon = if (uiState.placeCategory != null) Icons.Filled.ShoppingCart else Icons.Filled.LocationOn
+                        Icon(icon, null, Modifier.size(18.dp))
+                    },
+                    trailingIcon = if (hasPlace) {
                         {
                             Icon(
                                 Icons.Filled.Close, "Supprimer le lieu",

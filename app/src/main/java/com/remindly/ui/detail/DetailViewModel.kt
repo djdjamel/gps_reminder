@@ -10,10 +10,10 @@ import com.remindly.domain.model.AttachmentType
 import com.remindly.domain.model.Reminder
 import com.remindly.domain.model.ReminderStatus
 import com.remindly.domain.model.TriggerType
+import com.remindly.location.GeofenceManager
 import com.remindly.media.AttachmentStore
 import com.remindly.media.AudioRecorderManager
-import com.remindly.time.AlarmScheduler
-import com.remindly.location.GeofenceManager
+import com.remindly.notify.AlarmScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,15 +26,16 @@ import javax.inject.Inject
 data class DetailUiState(
     val reminder: Reminder? = null,
     val isLoading: Boolean = true,
-    val text: String = "",
     val isSaving: Boolean = false,
-    // Champs éditables
+    val text: String = "",
     val triggerTimeMillis: Long? = null,
     val placeLat: Double? = null,
     val placeLng: Double? = null,
     val placeLabel: String? = null,
-    val audioPath: String? = null,
-    val isRecording: Boolean = false
+    val placeCategory: String? = null,
+    val categoryRefType: String? = null,
+    val isRecording: Boolean = false,
+    val audioPath: String? = null
 )
 
 @HiltViewModel
@@ -43,8 +44,8 @@ class DetailViewModel @Inject constructor(
     private val attachmentStore: AttachmentStore,
     private val alarmScheduler: AlarmScheduler,
     private val geofenceManager: GeofenceManager,
-    @ApplicationContext private val context: android.content.Context,
-    savedStateHandle: SavedStateHandle
+    savedStateHandle: SavedStateHandle,
+    @ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
     private val reminderId: Long = savedStateHandle.get<String>("reminderId")?.toLongOrNull() ?: 0L
@@ -74,8 +75,8 @@ class DetailViewModel @Inject constructor(
                         placeLat = if (it.reminder == null) reminder?.placeLat else it.placeLat,
                         placeLng = if (it.reminder == null) reminder?.placeLng else it.placeLng,
                         placeLabel = if (it.reminder == null) reminder?.placeLabel else it.placeLabel,
-                        // Toujours récupérer l'audio depuis les pièces jointes si pas encore défini
-                        // (évite la condition fragile "it.reminder == null" qui peut rater la 2ème émission)
+                        placeCategory = if (it.reminder == null) reminder?.placeCategory else it.placeCategory,
+                        categoryRefType = if (it.reminder == null) reminder?.categoryRefType else it.categoryRefType,
                         audioPath = it.audioPath
                             ?: reminder?.attachments?.firstOrNull { a -> a.type == AttachmentType.AUDIO }?.localPath
                     )
@@ -96,12 +97,28 @@ class DetailViewModel @Inject constructor(
         _uiState.update { it.copy(triggerTimeMillis = null) }
     }
 
-    fun setPlace(lat: Double, lng: Double, label: String?) {
-        _uiState.update { it.copy(placeLat = lat, placeLng = lng, placeLabel = label ?: "Lieu sélectionné") }
+    fun setPlace(lat: Double, lng: Double, label: String?, category: String? = null, categoryRefType: String? = null) {
+        _uiState.update {
+            it.copy(
+                placeLat = lat,
+                placeLng = lng,
+                placeLabel = label ?: "Lieu sélectionné",
+                placeCategory = category,
+                categoryRefType = categoryRefType
+            )
+        }
     }
 
     fun clearPlace() {
-        _uiState.update { it.copy(placeLat = null, placeLng = null, placeLabel = null) }
+        _uiState.update {
+            it.copy(
+                placeLat = null,
+                placeLng = null,
+                placeLabel = null,
+                placeCategory = null,
+                categoryRefType = null
+            )
+        }
     }
 
     fun addImage(uri: Uri) {
@@ -132,10 +149,12 @@ class DetailViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
 
+            val hasPlace = state.placeLat != null || state.placeCategory != null
+
             val triggerType = when {
-                state.triggerTimeMillis != null && state.placeLat != null -> TriggerType.BOTH
+                state.triggerTimeMillis != null && hasPlace -> TriggerType.BOTH
                 state.triggerTimeMillis != null -> TriggerType.TIME
-                state.placeLat != null -> TriggerType.PLACE
+                hasPlace -> TriggerType.PLACE
                 else -> TriggerType.NONE
             }
 
@@ -146,7 +165,9 @@ class DetailViewModel @Inject constructor(
                 placeLat = state.placeLat,
                 placeLng = state.placeLng,
                 placeRadiusM = if (state.placeLat != null) 120f else null,
-                placeLabel = state.placeLabel
+                placeLabel = state.placeLabel,
+                placeCategory = state.placeCategory,
+                categoryRefType = state.categoryRefType
             )
             val savedId = reminderRepository.save(reminder)
             
@@ -172,33 +193,43 @@ class DetailViewModel @Inject constructor(
                 geofenceManager.removeGeofence(savedId)
             }
 
+            _uiState.update { it.copy(isSaving = false) }
             onDone()
         }
     }
 
-    fun complete(onDone: () -> Unit) {
-        if (reminderId != 0L) {
-            viewModelScope.launch {
-                reminderRepository.setStatus(reminderId, ReminderStatus.COMPLETED)
-                alarmScheduler.cancel(reminderId)
-                geofenceManager.removeGeofence(reminderId)
-                onDone()
-            }
-        }
-    }
-
     fun delete(onDone: () -> Unit) {
-        if (reminderId != 0L) {
-            viewModelScope.launch {
-                reminderRepository.delete(reminderId)
+        viewModelScope.launch {
+            if (reminderId > 0) {
                 alarmScheduler.cancel(reminderId)
                 geofenceManager.removeGeofence(reminderId)
-                onDone()
+                reminderRepository.delete(reminderId)
+            }
+            onDone()
+        }
+    }
+
+    fun toggleStatus() {
+        val current = _uiState.value.reminder ?: return
+        val newStatus = if (current.status == ReminderStatus.ACTIVE) ReminderStatus.COMPLETED else ReminderStatus.ACTIVE
+        viewModelScope.launch {
+            reminderRepository.setStatus(current.id, newStatus)
+            if (newStatus == ReminderStatus.COMPLETED) {
+                alarmScheduler.cancel(current.id)
+                geofenceManager.removeGeofence(current.id)
             }
         }
     }
 
-    // ── Enregistrement vocal ──
+    fun complete(onDone: () -> Unit) {
+        val current = _uiState.value.reminder ?: return
+        viewModelScope.launch {
+            reminderRepository.setStatus(current.id, ReminderStatus.COMPLETED)
+            alarmScheduler.cancel(current.id)
+            geofenceManager.removeGeofence(current.id)
+            onDone()
+        }
+    }
 
     fun startRecording() {
         try {
@@ -211,45 +242,46 @@ class DetailViewModel @Inject constructor(
 
     fun stopRecording() {
         val path = audioRecorder.stopRecording()
-        _uiState.update { it.copy(isRecording = false, audioPath = path) }
-        // Sauvegarder immédiatement comme attachement
-        if (path != null && reminderId != 0L) {
+        if (path != null) {
             viewModelScope.launch {
-                val storedPath = attachmentStore.moveAudioToStorage(path)
-                if (storedPath != null) {
+                val localPath = attachmentStore.moveAudioToStorage(path)
+                if (localPath != null) {
                     reminderRepository.addAttachment(
                         reminderId,
                         Attachment(
                             reminderId = reminderId,
                             type = AttachmentType.AUDIO,
-                            localPath = storedPath,
+                            localPath = localPath,
                             mimeType = "audio/mp4"
                         )
                     )
-                    _uiState.update { it.copy(audioPath = storedPath) }
+                    _uiState.update { it.copy(isRecording = false, audioPath = localPath) }
                 }
             }
+        } else {
+            _uiState.update { it.copy(isRecording = false) }
         }
     }
 
     fun deleteRecording() {
-        val path = _uiState.value.audioPath ?: return
-        viewModelScope.launch {
-            attachmentStore.deleteFile(path)
-            // Supprimer aussi l'attachement en base si existant
-            val audioAttachment = _uiState.value.reminder?.attachments
-                ?.firstOrNull { it.type == AttachmentType.AUDIO && it.localPath == path }
-            if (audioAttachment != null) {
-                reminderRepository.removeAttachment(audioAttachment.id, path)
+        val path = _uiState.value.audioPath
+        if (path != null) {
+            viewModelScope.launch {
+                val audioAttachment = _uiState.value.reminder?.attachments?.firstOrNull { it.type == AttachmentType.AUDIO }
+                if (audioAttachment != null) {
+                    reminderRepository.removeAttachment(audioAttachment.id, path)
+                } else {
+                    attachmentStore.deleteFile(path)
+                }
+                _uiState.update { it.copy(audioPath = null) }
             }
-            _uiState.update { it.copy(audioPath = null) }
         }
     }
 
     override fun onCleared() {
         super.onCleared()
-        if (audioRecorder.isRecording) {
-            audioRecorder.cancelRecording()
+        if (_uiState.value.isRecording) {
+            audioRecorder.stopRecording()
         }
     }
 }

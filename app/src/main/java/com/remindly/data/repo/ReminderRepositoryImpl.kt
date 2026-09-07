@@ -109,6 +109,8 @@ class ReminderRepositoryImpl @Inject constructor(
             placeLng = reminder.placeLng,
             placeRadiusM = reminder.placeRadiusM,
             placeLabel = reminder.placeLabel,
+            placeCategory = reminder.placeCategory,
+            categoryRefType = reminder.categoryRefType,
             sortOrder = reminder.sortOrder,
             authorId = reminder.authorId,
             authorName = reminder.authorName
@@ -206,6 +208,8 @@ class ReminderRepositoryImpl @Inject constructor(
             placeLng = placeLng,
             placeRadiusM = placeRadiusM,
             placeLabel = placeLabel,
+            placeCategory = placeCategory,
+            categoryRefType = categoryRefType,
             sortOrder = sortOrder,
             authorId = authorId,
             authorName = authorName,

@@ -20,7 +20,9 @@ class ReRegisterGeofencesWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         try {
             val activeReminders = reminderRepository.observePersonalActive().first()
-            val locationReminders = activeReminders.filter { it.placeLat != null && it.placeLng != null }
+            val locationReminders = activeReminders.filter { 
+                (it.placeLat != null && it.placeLng != null) || it.placeCategory != null 
+            }
             
             for (reminder in locationReminders) {
                 geofenceManager.addGeofence(reminder)

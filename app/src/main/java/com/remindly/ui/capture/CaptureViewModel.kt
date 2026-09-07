@@ -7,11 +7,12 @@ import com.remindly.data.repo.ReminderRepository
 import com.remindly.domain.model.Attachment
 import com.remindly.domain.model.AttachmentType
 import com.remindly.domain.model.Reminder
+import com.remindly.domain.model.ReminderStatus
 import com.remindly.domain.model.TriggerType
+import com.remindly.location.GeofenceManager
 import com.remindly.media.AttachmentStore
 import com.remindly.media.AudioRecorderManager
-import com.remindly.time.AlarmScheduler
-import com.remindly.location.GeofenceManager
+import com.remindly.notify.AlarmScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +31,8 @@ data class CaptureUiState(
     val placeLat: Double? = null,
     val placeLng: Double? = null,
     val placeLabel: String? = null,
+    val placeCategory: String? = null,
+    val categoryRefType: String? = null,
     // Médias
     val imageUris: List<Uri> = emptyList(),
     val audioPath: String? = null,
@@ -63,12 +66,28 @@ class CaptureViewModel @Inject constructor(
         _uiState.update { it.copy(triggerTimeMillis = null) }
     }
 
-    fun setPlace(lat: Double, lng: Double, label: String?) {
-        _uiState.update { it.copy(placeLat = lat, placeLng = lng, placeLabel = label ?: "Lieu sélectionné") }
+    fun setPlace(lat: Double, lng: Double, label: String?, category: String? = null, categoryRefType: String? = null) {
+        _uiState.update {
+            it.copy(
+                placeLat = lat,
+                placeLng = lng,
+                placeLabel = label ?: "Lieu sélectionné",
+                placeCategory = category,
+                categoryRefType = categoryRefType
+            )
+        }
     }
 
     fun clearPlace() {
-        _uiState.update { it.copy(placeLat = null, placeLng = null, placeLabel = null) }
+        _uiState.update {
+            it.copy(
+                placeLat = null,
+                placeLng = null,
+                placeLabel = null,
+                placeCategory = null,
+                categoryRefType = null
+            )
+        }
     }
 
     fun addImage(uri: Uri) {
@@ -103,19 +122,20 @@ class CaptureViewModel @Inject constructor(
     fun saveReminder(onSuccess: () -> Unit) {
         viewModelScope.launch {
             val state = _uiState.value
-            if (state.text.isBlank() && state.imageUris.isEmpty() && state.audioPath == null) {
-                // Rien à sauvegarder
-                onSuccess()
+            if (state.text.isBlank() && state.audioPath == null && state.imageUris.isEmpty()) {
+                _uiState.update { it.copy(errorMessage = "Veuillez entrer un texte, un enregistrement audio ou une photo.") }
                 return@launch
             }
 
             _uiState.update { it.copy(isSaving = true, errorMessage = null) }
 
+            val hasPlace = state.placeLat != null || state.placeCategory != null
+
             // Déterminer le type de trigger
             val triggerType = when {
-                state.triggerTimeMillis != null && state.placeLat != null -> TriggerType.BOTH
+                state.triggerTimeMillis != null && hasPlace -> TriggerType.BOTH
                 state.triggerTimeMillis != null -> TriggerType.TIME
-                state.placeLat != null -> TriggerType.PLACE
+                hasPlace -> TriggerType.PLACE
                 else -> TriggerType.NONE
             }
 
@@ -126,7 +146,9 @@ class CaptureViewModel @Inject constructor(
                 placeLat = state.placeLat,
                 placeLng = state.placeLng,
                 placeRadiusM = if (state.placeLat != null) 120f else null,
-                placeLabel = state.placeLabel
+                placeLabel = state.placeLabel,
+                placeCategory = state.placeCategory,
+                categoryRefType = state.categoryRefType
             )
             
             try {
@@ -200,8 +222,8 @@ class CaptureViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        if (audioRecorder.isRecording) {
-            audioRecorder.cancelRecording()
+        if (_uiState.value.isRecording) {
+            audioRecorder.stopRecording()
         }
     }
 }

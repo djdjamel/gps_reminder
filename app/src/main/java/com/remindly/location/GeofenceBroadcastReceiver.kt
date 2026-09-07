@@ -23,6 +23,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     @Inject
     lateinit var reminderRepository: ReminderRepository
 
+    @Inject
+    lateinit var geofenceManager: GeofenceManager
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -38,8 +41,12 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             scope.launch {
                 try {
+                    val handledReminderIds = mutableSetOf<Long>()
                     for (geofence in triggeringGeofences) {
-                        val reminderId = geofence.requestId.toLongOrNull() ?: continue
+                        // Extrait l'ID du rappel (supporte "42" ou "42_geo_3")
+                        val reminderId = geofence.requestId.substringBefore("_").toLongOrNull() ?: continue
+                        if (!handledReminderIds.add(reminderId)) continue
+
                         val reminder = reminderRepository.getById(reminderId) ?: continue
                         
                         if (reminder.status == ReminderStatus.ACTIVE) {
@@ -58,6 +65,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 notifier.showPlaceReminder(reminder)
                             }
                             reminderRepository.setStatus(reminderId, ReminderStatus.COMPLETED)
+                            geofenceManager.removeGeofence(reminderId)
                         }
                     }
                 } finally {

@@ -15,6 +15,8 @@ data class Reminder(
     val placeLng: Double? = null,
     val placeRadiusM: Float? = null,
     val placeLabel: String? = null,
+    val placeCategory: String? = null,
+    val categoryRefType: String? = null,
     val sortOrder: Int = 0,
     // Collaboration
     val authorId: String? = null,
