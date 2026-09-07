@@ -51,12 +51,18 @@ class AlarmReceiver : BroadcastReceiver() {
 
                 if (audioAttachment != null) {
                     // Rappel vocal : jouer l'enregistrement via AudioAlarmService
-                    AudioAlarmService.start(
-                        context = context,
-                        audioPath = audioAttachment.localPath,
-                        reminderText = reminder.text ?: "Rappel vocal",
-                        reminderId = reminder.id
-                    )
+                    try {
+                        AudioAlarmService.start(
+                            context = context,
+                            audioPath = audioAttachment.localPath,
+                            reminderText = reminder.text ?: "Rappel vocal",
+                            reminderId = reminder.id
+                        )
+                    } catch (e: Exception) {
+                        android.util.Log.e("AlarmReceiver", "Impossible de démarrer AudioAlarmService en arrière-plan: ${e.message}. Affichage direct de la notification.")
+                        val notifier = ReminderNotifier(context)
+                        notifier.showTimeReminder(reminder)
+                    }
                 } else {
                     // Rappel standard : notification classique
                     val notifier = ReminderNotifier(context)

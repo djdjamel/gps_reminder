@@ -36,7 +36,13 @@
 
         <receiver android:name=".time.AlarmReceiver" android:exported="false" />
         <receiver android:name=".notify.NotificationActionReceiver" android:exported="false" />
-        <receiver android:name=".location.GeofenceBroadcastReceiver" android:exported="false" />
+        <receiver
+            android:name=".location.GeofenceBroadcastReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.remindly.action.ACTION_GEOFENCE_EVENT" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".media.AudioAlarmService"

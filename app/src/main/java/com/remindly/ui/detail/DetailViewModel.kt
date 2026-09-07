@@ -175,7 +175,7 @@ class DetailViewModel @Inject constructor(
                 triggerTimeMillis = state.triggerTimeMillis,
                 placeLat = state.placeLat,
                 placeLng = state.placeLng,
-                placeRadiusM = if (state.placeLat != null) 120f else null,
+                placeRadiusM = if (state.placeLat != null) 250f else null,
                 placeLabel = state.placeLabel,
                 placeCategory = state.placeCategory,
                 categoryRefType = state.categoryRefType,

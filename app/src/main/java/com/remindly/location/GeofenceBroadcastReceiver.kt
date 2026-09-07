@@ -90,13 +90,19 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 .firstOrNull { it.type == AttachmentType.AUDIO }
 
                             if (audioAttachment != null) {
-                                AudioAlarmService.start(
-                                    context = context,
-                                    audioPath = audioAttachment.localPath,
-                                    reminderText = reminder.text ?: "Rappel vocal",
-                                    reminderId = reminder.id,
-                                    placeName = detectedPlaceName ?: reminder.placeLabel
-                                )
+                                try {
+                                    AudioAlarmService.start(
+                                        context = context,
+                                        audioPath = audioAttachment.localPath,
+                                        reminderText = reminder.text ?: "Rappel vocal",
+                                        reminderId = reminder.id,
+                                        placeName = detectedPlaceName ?: reminder.placeLabel
+                                    )
+                                } catch (e: Exception) {
+                                    android.util.Log.e("GeofenceReceiver", "Impossible de démarrer AudioAlarmService en arrière-plan: ${e.message}. Affichage direct de la notification.")
+                                    val notifier = ReminderNotifier(context)
+                                    notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName)
+                                }
                             } else {
                                 val notifier = ReminderNotifier(context)
                                 notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName)

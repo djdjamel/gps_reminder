@@ -62,11 +62,13 @@ class ReminderNotifier(private val context: Context) {
         val titleText = if (isPlace && !placeInfo.isNullOrBlank()) "📍 $placeInfo" else "Rappel"
 
         val builder = NotificationCompat.Builder(context, channelId)
-            // .setSmallIcon(R.mipmap.ic_launcher) // TODO: Mettre une icône vectorielle
-            .setSmallIcon(if (isPlace) android.R.drawable.ic_menu_mylocation else android.R.drawable.ic_lock_idle_alarm)
+            .setSmallIcon(if (isPlace) android.R.drawable.ic_dialog_map else android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle(titleText)
             .setContentText(reminder.text ?: "Rappel sans texte")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .addAction(android.R.drawable.ic_popup_sync, "Reporter (+15m)", snoozePendingIntent)

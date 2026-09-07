@@ -40,7 +40,9 @@ class GeofenceManager @Inject constructor(
     private val prefs = context.getSharedPreferences("geofence_tracking", Context.MODE_PRIVATE)
 
     private val geofencePendingIntent: PendingIntent by lazy {
-        val intent = Intent(context, GeofenceBroadcastReceiver::class.java)
+        val intent = Intent(context, GeofenceBroadcastReceiver::class.java).apply {
+            action = "com.remindly.action.ACTION_GEOFENCE_EVENT"
+        }
         PendingIntent.getBroadcast(
             context,
             0,
@@ -104,7 +106,7 @@ class GeofenceManager @Inject constructor(
                         reminder.id.toString(),
                         reminder.placeLat,
                         reminder.placeLng,
-                        reminder.placeRadiusM ?: 200f
+                        reminder.placeRadiusM ?: 250f
                     )
                 }
             } catch (t: Throwable) {
@@ -182,7 +184,7 @@ class GeofenceManager @Inject constructor(
                             )
                             .setExpirationDuration(Geofence.NEVER_EXPIRE)
                             .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER)
-                            .setNotificationResponsiveness(5000)
+                            .setNotificationResponsiveness(0)
                             .build()
                     }
 
@@ -218,7 +220,7 @@ class GeofenceManager @Inject constructor(
             .setCircularRegion(lat, lng, radius)
             .setExpirationDuration(Geofence.NEVER_EXPIRE)
             .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER)
-            .setNotificationResponsiveness(5000)
+            .setNotificationResponsiveness(0)
             .build()
 
         val request = GeofencingRequest.Builder()
