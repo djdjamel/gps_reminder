@@ -26,6 +26,7 @@ import javax.inject.Singleton
 class GeofenceManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val nearbyPlacesService: NearbyPlacesService,
+    private val directionsService: DirectionsService,
     private val settingsRepository: VoiceAlarmSettingsRepository
 ) {
     private val geofencingClient: GeofencingClient = LocationServices.getGeofencingClient(context)
@@ -52,14 +53,21 @@ class GeofenceManager @Inject constructor(
                     val settings = settingsRepository.getSettings()
 
                     val places = if (reminder.categoryRefType == CategoryReferenceType.COMMUTE_ROUTE.id && settings.hasCommuteRoute) {
-                        // Recherche le long du trajet habituel configuré
-                        nearbyPlacesService.searchAlongRoute(
-                            startLat = settings.commuteStartLat!!,
-                            startLng = settings.commuteStartLng!!,
-                            endLat = settings.commuteEndLat!!,
-                            endLng = settings.commuteEndLng!!,
-                            category = category
-                        )
+                        if (settings.commuteRoutePolyline != null) {
+                            val allPoints = directionsService.decodePolyline(settings.commuteRoutePolyline)
+                            // Échantillonner 6 à 8 waypoints équidistants le long de la polyline
+                            val step = (allPoints.size / 6).coerceAtLeast(1)
+                            val sampledWaypoints = allPoints.filterIndexed { idx, _ -> idx % step == 0 }
+                            nearbyPlacesService.searchAlongWaypoints(sampledWaypoints, category)
+                        } else {
+                            nearbyPlacesService.searchAlongRoute(
+                                startLat = settings.commuteStartLat!!,
+                                startLng = settings.commuteStartLng!!,
+                                endLat = settings.commuteEndLat!!,
+                                endLng = settings.commuteEndLng!!,
+                                category = category
+                            )
+                        }
                     } else {
                         // Recherche autour de la position actuelle
                         val location = try {
@@ -104,6 +112,9 @@ class GeofenceManager @Inject constructor(
                             .build()
 
                         geofencingClient.addGeofences(request, geofencePendingIntent)
+                            .addOnFailureListener { e ->
+                                e.printStackTrace()
+                            }
                     } else if (reminder.placeLat != null && reminder.placeLng != null) {
                         // Fallback vers géofence unique si aucun POI trouvé
                         registerSingleGeofence(reminder.id.toString(), reminder.placeLat, reminder.placeLng, reminder.placeRadiusM ?: 100f)
@@ -133,6 +144,9 @@ class GeofenceManager @Inject constructor(
             .build()
 
         geofencingClient.addGeofences(request, geofencePendingIntent)
+            .addOnFailureListener { e ->
+                e.printStackTrace()
+            }
     }
 
     fun removeGeofence(reminderId: Long) {

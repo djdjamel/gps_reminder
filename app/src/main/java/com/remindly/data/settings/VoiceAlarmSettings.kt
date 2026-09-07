@@ -12,7 +12,8 @@ data class VoiceAlarmSettings(
     val commuteStartLabel: String? = null,
     val commuteEndLat: Double? = null,
     val commuteEndLng: Double? = null,
-    val commuteEndLabel: String? = null
+    val commuteEndLabel: String? = null,
+    val commuteRoutePolyline: String? = null
 ) {
     val hasCommuteRoute: Boolean
         get() = commuteStartLat != null && commuteStartLng != null &&

@@ -29,6 +29,7 @@ import coil.compose.AsyncImage
 import com.remindly.ui.components.VoiceRecorderWidget
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -39,8 +40,26 @@ fun QuickCaptureSheet(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val focusRequester = remember { FocusRequester() }
+
+    var isDismissing by remember { mutableStateOf(false) }
+
+    val safeDismiss: () -> Unit = {
+        if (!isDismissing) {
+            isDismissing = true
+            coroutineScope.launch {
+                try {
+                    sheetState.hide()
+                } catch (e: Exception) {
+                    // Ignorer les annulations d'animation
+                } finally {
+                    onDismissRequest()
+                }
+            }
+        }
+    }
 
     // Launcher pour la galerie
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -53,7 +72,12 @@ fun QuickCaptureSheet(
     )
 
     ModalBottomSheet(
-        onDismissRequest = onDismissRequest,
+        onDismissRequest = {
+            if (!isDismissing) {
+                isDismissing = true
+                onDismissRequest()
+            }
+        },
         sheetState = sheetState
     ) {
         if (uiState.errorMessage != null) {
@@ -212,7 +236,7 @@ fun QuickCaptureSheet(
             // ── Bouton Enregistrer ──
             Spacer(Modifier.height(16.dp))
             Button(
-                onClick = { viewModel.saveReminder(onDismissRequest) },
+                onClick = { viewModel.saveReminder(safeDismiss) },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = (uiState.text.isNotBlank() || uiState.imageUris.isNotEmpty() || uiState.audioPath != null) && !uiState.isSaving
             ) {

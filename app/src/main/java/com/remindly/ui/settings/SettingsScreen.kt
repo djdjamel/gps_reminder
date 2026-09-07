@@ -38,6 +38,7 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToCommuteRoute: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -46,7 +47,6 @@ fun SettingsScreen(
     val isTestingVolume by viewModel.isTestingVolume.collectAsStateWithLifecycle()
 
     var showLogoutDialog by remember { mutableStateOf(false) }
-    var showCommuteDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -310,7 +310,10 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Icon(
                                 Icons.Filled.AltRoute,
                                 contentDescription = null,
@@ -327,7 +330,7 @@ fun SettingsScreen(
                                 Text(
                                     if (settings.hasCommuteRoute)
                                         "${settings.commuteStartLabel ?: "Départ"} ➔ ${settings.commuteEndLabel ?: "Arrivée"}"
-                                    else "Aucun trajet configuré",
+                                    else "Non configuré (Départ ➔ Arrivée sur la carte)",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = if (settings.hasCommuteRoute) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontWeight = if (settings.hasCommuteRoute) FontWeight.SemiBold else FontWeight.Normal
@@ -335,12 +338,27 @@ fun SettingsScreen(
                             }
                         }
 
-                        FilledTonalButton(
-                            onClick = { showCommuteDialog = true },
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Text(if (settings.hasCommuteRoute) "Modifier" else "Définir")
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (settings.hasCommuteRoute) {
+                                IconButton(
+                                    onClick = { viewModel.clearCommuteRoute() },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Filled.DeleteOutline,
+                                        contentDescription = "Effacer le trajet",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            FilledTonalButton(
+                                onClick = onNavigateToCommuteRoute,
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(if (settings.hasCommuteRoute) "Modifier" else "Tracer")
+                            }
                         }
                     }
                 }
@@ -498,83 +516,6 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(16.dp))
         }
-    }
-
-    // Dialogue de configuration du trajet habituel
-    if (showCommuteDialog) {
-        var startLabel by remember { mutableStateOf(settings.commuteStartLabel ?: "Domicile") }
-        var startLat by remember { mutableStateOf(settings.commuteStartLat?.toString() ?: "48.8566") }
-        var startLng by remember { mutableStateOf(settings.commuteStartLng?.toString() ?: "2.3522") }
-
-        var endLabel by remember { mutableStateOf(settings.commuteEndLabel ?: "Bureau") }
-        var endLat by remember { mutableStateOf(settings.commuteEndLat?.toString() ?: "48.8924") }
-        var endLng by remember { mutableStateOf(settings.commuteEndLng?.toString() ?: "2.2366") }
-
-        AlertDialog(
-            onDismissRequest = { showCommuteDialog = false },
-            title = { Text("Définir mon trajet habituel") },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        "Indiquez vos points de départ et d'arrivée habituels (ex: Domicile ➔ Travail).",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    OutlinedTextField(
-                        value = startLabel,
-                        onValueChange = { startLabel = it },
-                        label = { Text("Point de départ (ex: Domicile)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = endLabel,
-                        onValueChange = { endLabel = it },
-                        label = { Text("Point d'arrivée (ex: Bureau)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val sLat = startLat.toDoubleOrNull() ?: 48.8566
-                        val sLng = startLng.toDoubleOrNull() ?: 2.3522
-                        val eLat = endLat.toDoubleOrNull() ?: 48.8924
-                        val eLng = endLng.toDoubleOrNull() ?: 2.2366
-
-                        viewModel.setCommuteStart(sLat, sLng, startLabel)
-                        viewModel.setCommuteEnd(eLat, eLng, endLabel)
-                        showCommuteDialog = false
-                    }
-                ) {
-                    Text("Enregistrer")
-                }
-            },
-            dismissButton = {
-                if (settings.hasCommuteRoute) {
-                    TextButton(
-                        onClick = {
-                            viewModel.clearCommuteRoute()
-                            showCommuteDialog = false
-                        },
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text("Effacer le trajet")
-                    }
-                } else {
-                    TextButton(onClick = { showCommuteDialog = false }) {
-                        Text("Annuler")
-                    }
-                }
-            }
-        )
     }
 
     // Dialogue de confirmation de déconnexion

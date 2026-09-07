@@ -28,6 +28,15 @@ interface VoiceAlarmSettingsRepository {
     suspend fun setPoiSearchRadius(radiusKm: Int)
     suspend fun setCommuteStart(lat: Double, lng: Double, label: String)
     suspend fun setCommuteEnd(lat: Double, lng: Double, label: String)
+    suspend fun setCommuteRoute(
+        startLat: Double,
+        startLng: Double,
+        startLabel: String,
+        endLat: Double,
+        endLng: Double,
+        endLabel: String,
+        polyline: String?
+    )
     suspend fun clearCommuteRoute()
 }
 
@@ -48,6 +57,7 @@ class VoiceAlarmSettingsRepositoryImpl(
         val KEY_COMMUTE_END_LAT = doublePreferencesKey("commute_end_lat")
         val KEY_COMMUTE_END_LNG = doublePreferencesKey("commute_end_lng")
         val KEY_COMMUTE_END_LABEL = stringPreferencesKey("commute_end_label")
+        val KEY_COMMUTE_ROUTE_POLYLINE = stringPreferencesKey("commute_route_polyline")
     }
 
     override val settingsFlow: Flow<VoiceAlarmSettings> = dataStore.data
@@ -69,7 +79,8 @@ class VoiceAlarmSettingsRepositoryImpl(
                 commuteStartLabel = preferences[PreferencesKeys.KEY_COMMUTE_START_LABEL],
                 commuteEndLat = preferences[PreferencesKeys.KEY_COMMUTE_END_LAT],
                 commuteEndLng = preferences[PreferencesKeys.KEY_COMMUTE_END_LNG],
-                commuteEndLabel = preferences[PreferencesKeys.KEY_COMMUTE_END_LABEL]
+                commuteEndLabel = preferences[PreferencesKeys.KEY_COMMUTE_END_LABEL],
+                commuteRoutePolyline = preferences[PreferencesKeys.KEY_COMMUTE_ROUTE_POLYLINE]
             )
         }
 
@@ -117,6 +128,30 @@ class VoiceAlarmSettingsRepositoryImpl(
         }
     }
 
+    override suspend fun setCommuteRoute(
+        startLat: Double,
+        startLng: Double,
+        startLabel: String,
+        endLat: Double,
+        endLng: Double,
+        endLabel: String,
+        polyline: String?
+    ) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.KEY_COMMUTE_START_LAT] = startLat
+            preferences[PreferencesKeys.KEY_COMMUTE_START_LNG] = startLng
+            preferences[PreferencesKeys.KEY_COMMUTE_START_LABEL] = startLabel
+            preferences[PreferencesKeys.KEY_COMMUTE_END_LAT] = endLat
+            preferences[PreferencesKeys.KEY_COMMUTE_END_LNG] = endLng
+            preferences[PreferencesKeys.KEY_COMMUTE_END_LABEL] = endLabel
+            if (polyline != null) {
+                preferences[PreferencesKeys.KEY_COMMUTE_ROUTE_POLYLINE] = polyline
+            } else {
+                preferences.remove(PreferencesKeys.KEY_COMMUTE_ROUTE_POLYLINE)
+            }
+        }
+    }
+
     override suspend fun clearCommuteRoute() {
         dataStore.edit { preferences ->
             preferences.remove(PreferencesKeys.KEY_COMMUTE_START_LAT)
@@ -125,6 +160,7 @@ class VoiceAlarmSettingsRepositoryImpl(
             preferences.remove(PreferencesKeys.KEY_COMMUTE_END_LAT)
             preferences.remove(PreferencesKeys.KEY_COMMUTE_END_LNG)
             preferences.remove(PreferencesKeys.KEY_COMMUTE_END_LABEL)
+            preferences.remove(PreferencesKeys.KEY_COMMUTE_ROUTE_POLYLINE)
         }
     }
 }

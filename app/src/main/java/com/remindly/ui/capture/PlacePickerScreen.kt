@@ -328,6 +328,9 @@ fun PlacePickerScreen(
         } else {
             // ─── Onglet 2 : Sélection par Catégorie ───────────────────────────
             CategoryPickerTab(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
                 userSettings = userSettings,
                 onCategoryConfirmed = { category, refType ->
                     val label = "À proximité : ${category.displayName}"
@@ -341,6 +344,7 @@ fun PlacePickerScreen(
 
 @Composable
 private fun CategoryPickerTab(
+    modifier: Modifier = Modifier,
     userSettings: com.remindly.data.settings.VoiceAlarmSettings,
     onCategoryConfirmed: (PlaceCategory, CategoryReferenceType) -> Unit
 ) {
@@ -348,9 +352,8 @@ private fun CategoryPickerTab(
     var selectedRefType by remember { mutableStateOf(CategoryReferenceType.CURRENT_LOCATION) }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
+        modifier = modifier
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Column(

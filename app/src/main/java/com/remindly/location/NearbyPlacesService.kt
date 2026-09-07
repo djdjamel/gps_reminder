@@ -48,7 +48,7 @@ class NearbyPlacesService @Inject constructor(
         radiusMeters: Int,
         category: PlaceCategory,
         maxResults: Int = 20
-    ): List<NearbyPlace> = coroutineScope {
+    ): List<NearbyPlace> = kotlinx.coroutines.supervisorScope {
         try {
             val centerLatLng = LatLng(centerLat, centerLng)
             val bounds = CircularBounds.newInstance(centerLatLng, radiusMeters.toDouble())
@@ -58,7 +58,11 @@ class NearbyPlacesService @Inject constructor(
                 .setLocationBias(bounds)
                 .build()
 
-            val response = placesClient.findAutocompletePredictions(request).await()
+            val response = try {
+                placesClient.findAutocompletePredictions(request).await()
+            } catch (e: Exception) {
+                return@supervisorScope emptyList()
+            }
             val predictions = response.autocompletePredictions.take(maxResults)
 
             val placeFields = listOf(Place.Field.ID, Place.Field.NAME, Place.Field.LAT_LNG)
@@ -96,20 +100,14 @@ class NearbyPlacesService @Inject constructor(
     }
 
     /**
-     * Recherche les établissements d'une catégorie le long d'un itinéraire entre 2 points.
-     * Échantillonne des waypoints le long du trajet et fusionne/déduplique les résultats.
+     * Recherche les établissements d'une catégorie le long d'une liste de waypoints.
      */
-    suspend fun searchAlongRoute(
-        startLat: Double,
-        startLng: Double,
-        endLat: Double,
-        endLng: Double,
+    suspend fun searchAlongWaypoints(
+        waypoints: List<LatLng>,
         category: PlaceCategory,
-        sampleCount: Int = 5,
         radiusPerPointMeters: Int = 600
-    ): List<NearbyPlace> = coroutineScope {
+    ): List<NearbyPlace> = kotlinx.coroutines.supervisorScope {
         try {
-            val waypoints = generateWaypoints(startLat, startLng, endLat, endLng, sampleCount)
             val allPlaces = mutableListOf<NearbyPlace>()
             val seenPlaceIds = mutableSetOf<String>()
 
@@ -133,6 +131,23 @@ class NearbyPlacesService @Inject constructor(
         } catch (e: Exception) {
             emptyList()
         }
+    }
+
+    /**
+     * Recherche les établissements d'une catégorie le long d'un itinéraire entre 2 points.
+     * Échantillonne des waypoints le long du trajet et fusionne/déduplique les résultats.
+     */
+    suspend fun searchAlongRoute(
+        startLat: Double,
+        startLng: Double,
+        endLat: Double,
+        endLng: Double,
+        category: PlaceCategory,
+        sampleCount: Int = 5,
+        radiusPerPointMeters: Int = 600
+    ): List<NearbyPlace> {
+        val waypoints = generateWaypoints(startLat, startLng, endLat, endLng, sampleCount)
+        return searchAlongWaypoints(waypoints, category, radiusPerPointMeters)
     }
 
     /**

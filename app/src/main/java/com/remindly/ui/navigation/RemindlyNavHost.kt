@@ -167,6 +167,17 @@ fun RemindlyNavHost(
             SettingsScreen(
                 onNavigateBack = {
                     navController.popBackStack()
+                },
+                onNavigateToCommuteRoute = {
+                    navController.navigate(Routes.CommuteRoute.route)
+                }
+            )
+        }
+
+        composable(Routes.CommuteRoute.route) {
+            com.remindly.ui.settings.CommuteRouteScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
                 }
             )
         }
