@@ -14,6 +14,7 @@ import com.remindly.data.settings.VoiceAlarmSettingsRepository
 import com.remindly.domain.model.CategoryReferenceType
 import com.remindly.domain.model.PlaceCategory
 import com.remindly.domain.model.Reminder
+import android.util.Base64
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +35,7 @@ class GeofenceManager @Inject constructor(
     private val geofencingClient: GeofencingClient = LocationServices.getGeofencingClient(context)
     private val fusedLocationClient: FusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val prefs = context.getSharedPreferences("geofence_tracking", Context.MODE_PRIVATE)
 
     private val geofencePendingIntent: PendingIntent by lazy {
         val intent = Intent(context, GeofenceBroadcastReceiver::class.java)
@@ -100,9 +102,15 @@ class GeofenceManager @Inject constructor(
 
                     if (places.isNotEmpty()) {
                         val geofences = places.mapIndexed { index, place ->
-                            Log.d(tag, "-> Géofence [${reminder.id}_geo_$index] posée sur: ${place.name} (${place.latitude}, ${place.longitude}) - Rayon 250m")
+                            val safeName = try {
+                                Base64.encodeToString(place.name.toByteArray(Charsets.UTF_8), Base64.URL_SAFE or Base64.NO_WRAP)
+                            } catch (e: Exception) {
+                                ""
+                            }
+                            val reqId = if (safeName.isNotEmpty()) "${reminder.id}_geo_${index}__$safeName" else "${reminder.id}_geo_${index}"
+                            Log.d(tag, "-> Géofence [$reqId] posée sur: ${place.name} (${place.latitude}, ${place.longitude}) - Rayon 250m")
                             Geofence.Builder()
-                                .setRequestId("${reminder.id}_geo_${index}")
+                                .setRequestId(reqId)
                                 .setCircularRegion(
                                     place.latitude,
                                     place.longitude,
@@ -113,6 +121,9 @@ class GeofenceManager @Inject constructor(
                                 .setNotificationResponsiveness(5000) // Réactivité 5 secondes
                                 .build()
                         }
+
+                        val requestIds = geofences.map { it.requestId }.toSet()
+                        prefs.edit().putStringSet("geofences_${reminder.id}", requestIds).apply()
 
                         val request = GeofencingRequest.Builder()
                             .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
@@ -170,13 +181,18 @@ class GeofenceManager @Inject constructor(
     }
 
     fun removeGeofence(reminderId: Long) {
-        val idsToRemove = listOf(reminderId.toString()) + (0..35).map { "${reminderId}_geo_$it" }
+        val storedIds = prefs.getStringSet("geofences_$reminderId", emptySet()) ?: emptySet()
+        val defaultIds = listOf(reminderId.toString()) + (0..35).map { "${reminderId}_geo_$it" }
+        val idsToRemove = (storedIds + defaultIds).toList()
+
         geofencingClient.removeGeofences(idsToRemove)
             .addOnSuccessListener {
-                Log.d(tag, "Géofences du rappel $reminderId supprimées")
+                Log.d(tag, "Géofences du rappel $reminderId supprimées (${idsToRemove.size} IDs)")
+                prefs.edit().remove("geofences_$reminderId").apply()
             }
             .addOnFailureListener { e ->
                 Log.w(tag, "Erreur suppression géofences $reminderId: ${e.message}")
+                prefs.edit().remove("geofences_$reminderId").apply()
             }
     }
 }

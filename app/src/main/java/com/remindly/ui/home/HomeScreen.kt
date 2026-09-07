@@ -364,6 +364,30 @@ fun ReminderItem(
                     overflow = TextOverflow.Ellipsis
                 )
 
+                // Nom du lieu détecté ou configuré
+                if (!reminder.placeLabel.isNullOrBlank()) {
+                    Row(
+                        modifier = Modifier.padding(top = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Place,
+                            contentDescription = null,
+                            modifier = Modifier.size(13.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(2.dp))
+                        Text(
+                            text = reminder.placeLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
                 // Indicateurs (icônes seules, compactes)
                 Row(
                     modifier = Modifier.padding(top = 4.dp),

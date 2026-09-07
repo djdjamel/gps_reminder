@@ -64,8 +64,9 @@ class AudioAlarmService : Service() {
                     ?: run { stopSelf(); return START_NOT_STICKY }
                 val reminderText = intent.getStringExtra(EXTRA_REMINDER_TEXT) ?: "Rappel vocal"
                 val reminderId = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
+                val placeName = intent.getStringExtra(EXTRA_PLACE_NAME)
 
-                showForegroundNotification(reminderId, reminderText)
+                showForegroundNotification(reminderId, reminderText, placeName)
 
                 serviceScope.launch {
                     val settings = settingsRepository.getSettings()
@@ -79,7 +80,7 @@ class AudioAlarmService : Service() {
 
     // ─── Notification foreground ────────────────────────────────────────────────
 
-    private fun showForegroundNotification(reminderId: Long, reminderText: String) {
+    private fun showForegroundNotification(reminderId: Long, reminderText: String, placeName: String? = null) {
         val stopIntent = Intent(this, AudioAlarmService::class.java).apply {
             action = ACTION_STOP
         }
@@ -90,7 +91,7 @@ class AudioAlarmService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("🔔 Rappel vocal")
             .setContentText(reminderText)
@@ -98,7 +99,16 @@ class AudioAlarmService : Service() {
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .addAction(android.R.drawable.ic_media_pause, "Arrêter", stopPendingIntent)
-            .build()
+
+        if (!placeName.isNullOrBlank()) {
+            builder.setSubText("📍 $placeName")
+            builder.setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText("$reminderText\n📍 Détecté à : $placeName")
+            )
+        }
+
+        val notification = builder.build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ServiceCompat.startForeground(
@@ -271,16 +281,26 @@ class AudioAlarmService : Service() {
         const val EXTRA_AUDIO_PATH    = "extra_audio_path"
         const val EXTRA_REMINDER_TEXT = "extra_reminder_text"
         const val EXTRA_REMINDER_ID   = "extra_reminder_id"
+        const val EXTRA_PLACE_NAME    = "extra_place_name"
         const val CHANNEL_ID          = "audio_alarm_channel"
         const val NOTIFICATION_ID     = 9999
 
         /** Démarre le service de lecture audio */
-        fun start(context: Context, audioPath: String, reminderText: String, reminderId: Long) {
+        fun start(
+            context: Context,
+            audioPath: String,
+            reminderText: String,
+            reminderId: Long,
+            placeName: String? = null
+        ) {
             val intent = Intent(context, AudioAlarmService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_AUDIO_PATH, audioPath)
                 putExtra(EXTRA_REMINDER_TEXT, reminderText)
                 putExtra(EXTRA_REMINDER_ID, reminderId)
+                if (placeName != null) {
+                    putExtra(EXTRA_PLACE_NAME, placeName)
+                }
             }
             context.startForegroundService(intent)
         }

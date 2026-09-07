@@ -3,6 +3,7 @@ package com.remindly.location
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Base64
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
 import com.remindly.data.repo.ReminderRepository
@@ -53,12 +54,23 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 try {
                     val handledReminderIds = mutableSetOf<Long>()
                     for (geofence in triggeringGeofences) {
-                        // Extrait l'ID du rappel (supporte "42" ou "42_geo_3")
+                        // Extrait l'ID du rappel (supporte "42", "42_geo_3" ou "42_geo_3__Base64")
                         val reminderId = geofence.requestId.substringBefore("_").toLongOrNull() ?: continue
                         if (!handledReminderIds.add(reminderId)) continue
 
                         val reminder = reminderRepository.getById(reminderId) ?: continue
-                        android.util.Log.i("GeofenceReceiver", "DÉCLENCHEMENT DU RAPPEL $reminderId: '${reminder.text}' (Catégorie: ${reminder.placeCategory})")
+
+                        val detectedPlaceName = if (geofence.requestId.contains("__")) {
+                            try {
+                                val encoded = geofence.requestId.substringAfter("__")
+                                val bytes = Base64.decode(encoded, Base64.URL_SAFE or Base64.NO_WRAP)
+                                String(bytes, Charsets.UTF_8).takeIf { it.isNotBlank() }
+                            } catch (e: Exception) {
+                                null
+                            }
+                        } else null
+
+                        android.util.Log.i("GeofenceReceiver", "DÉCLENCHEMENT DU RAPPEL $reminderId: '${reminder.text}' (Catégorie: ${reminder.placeCategory}, Détecté: '$detectedPlaceName')")
                         
                         if (reminder.status == ReminderStatus.ACTIVE) {
                             val audioAttachment = reminder.attachments
@@ -69,13 +81,19 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                     context = context,
                                     audioPath = audioAttachment.localPath,
                                     reminderText = reminder.text ?: "Rappel vocal",
-                                    reminderId = reminder.id
+                                    reminderId = reminder.id,
+                                    placeName = detectedPlaceName ?: reminder.placeLabel
                                 )
                             } else {
                                 val notifier = ReminderNotifier(context)
-                                notifier.showPlaceReminder(reminder)
+                                notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName)
                             }
-                            reminderRepository.setStatus(reminderId, ReminderStatus.COMPLETED)
+
+                            val updatedReminder = reminder.copy(
+                                placeLabel = detectedPlaceName ?: reminder.placeLabel,
+                                status = ReminderStatus.COMPLETED
+                            )
+                            reminderRepository.save(updatedReminder)
                             geofenceManager.removeGeofence(reminderId)
                         }
                     }

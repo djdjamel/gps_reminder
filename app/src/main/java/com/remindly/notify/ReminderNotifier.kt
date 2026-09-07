@@ -15,14 +15,14 @@ class ReminderNotifier(private val context: Context) {
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     fun showTimeReminder(reminder: Reminder) {
-        showReminder(reminder, false)
+        showReminder(reminder, false, null)
     }
 
-    fun showPlaceReminder(reminder: Reminder) {
-        showReminder(reminder, true)
+    fun showPlaceReminder(reminder: Reminder, detectedPlaceName: String? = null) {
+        showReminder(reminder, true, detectedPlaceName)
     }
 
-    private fun showReminder(reminder: Reminder, isPlace: Boolean) {
+    private fun showReminder(reminder: Reminder, isPlace: Boolean, detectedPlaceName: String? = null) {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
@@ -57,11 +57,14 @@ class ReminderNotifier(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val placeInfo = detectedPlaceName ?: reminder.placeLabel
         val channelId = if (isPlace) NotificationChannels.PLACE_CHANNEL_ID else NotificationChannels.TIME_CHANNEL_ID
+        val titleText = if (isPlace && !placeInfo.isNullOrBlank()) "📍 $placeInfo" else "Rappel"
+
         val builder = NotificationCompat.Builder(context, channelId)
             // .setSmallIcon(R.mipmap.ic_launcher) // TODO: Mettre une icône vectorielle
             .setSmallIcon(if (isPlace) android.R.drawable.ic_menu_mylocation else android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle("Rappel")
+            .setContentTitle(titleText)
             .setContentText(reminder.text ?: "Rappel sans texte")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
@@ -73,6 +76,9 @@ class ReminderNotifier(private val context: Context) {
         val audioAttachment = reminder.attachments.firstOrNull { it.type == com.remindly.domain.model.AttachmentType.AUDIO }
         
         var textContent = reminder.text ?: "Rappel"
+        if (isPlace && !placeInfo.isNullOrBlank() && titleText != "📍 $placeInfo") {
+            textContent += "\n📍 $placeInfo"
+        }
 
         if (imageAttachment != null) {
             val file = File(imageAttachment.localPath)
