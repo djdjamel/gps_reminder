@@ -73,13 +73,15 @@ fun RemindlyNavHost(
                     val label = savedStateHandle.get<String>("place_label")
                     val category = savedStateHandle.get<String>("place_category")
                     val categoryRef = savedStateHandle.get<String>("place_category_ref")
+                    val commuteDirection = savedStateHandle.get<String>("place_commute_direction")
                     if (lat != 0.0 && lng != 0.0) {
-                        captureViewModel.setPlace(lat, lng, label, category, categoryRef)
+                        captureViewModel.setPlace(lat, lng, label, category, categoryRef, commuteDirection)
                         savedStateHandle.remove<Double>("place_lat")
                         savedStateHandle.remove<Double>("place_lng")
                         savedStateHandle.remove<String>("place_label")
                         savedStateHandle.remove<String>("place_category")
                         savedStateHandle.remove<String>("place_category_ref")
+                        savedStateHandle.remove<String>("place_commute_direction")
                     }
                 }
             }
@@ -105,13 +107,15 @@ fun RemindlyNavHost(
                     val label = savedStateHandle.get<String>("place_label")
                     val category = savedStateHandle.get<String>("place_category")
                     val categoryRef = savedStateHandle.get<String>("place_category_ref")
+                    val commuteDirection = savedStateHandle.get<String>("place_commute_direction")
                     if (lat != 0.0 && lng != 0.0) {
-                        detailViewModel.setPlace(lat, lng, label, category, categoryRef)
+                        detailViewModel.setPlace(lat, lng, label, category, categoryRef, commuteDirection)
                         savedStateHandle.remove<Double>("place_lat")
                         savedStateHandle.remove<Double>("place_lng")
                         savedStateHandle.remove<String>("place_label")
                         savedStateHandle.remove<String>("place_category")
                         savedStateHandle.remove<String>("place_category_ref")
+                        savedStateHandle.remove<String>("place_commute_direction")
                     }
                 }
             }
@@ -129,13 +133,14 @@ fun RemindlyNavHost(
 
         composable(Routes.PlacePicker.route) {
             PlacePickerScreen(
-                onPlaceSelected = { latLng, label, category, categoryRef ->
+                onPlaceSelected = { latLng, label, category, categoryRef, commuteDirection ->
                     navController.previousBackStackEntry?.savedStateHandle?.apply {
                         set("place_lat", latLng.latitude)
                         set("place_lng", latLng.longitude)
                         set("place_label", label ?: "Lat: ${"%.4f".format(latLng.latitude)}, Lng: ${"%.4f".format(latLng.longitude)}")
                         set("place_category", category)
                         set("place_category_ref", categoryRef)
+                        set("place_commute_direction", commuteDirection)
                     }
                     navController.popBackStack()
                 },
@@ -147,13 +152,14 @@ fun RemindlyNavHost(
 
         composable(Routes.PlacePickerFromDetail.route) {
             PlacePickerScreen(
-                onPlaceSelected = { latLng, label, category, categoryRef ->
+                onPlaceSelected = { latLng, label, category, categoryRef, commuteDirection ->
                     navController.previousBackStackEntry?.savedStateHandle?.apply {
                         set("place_lat", latLng.latitude)
                         set("place_lng", latLng.longitude)
                         set("place_label", label ?: "Lat: ${"%.4f".format(latLng.latitude)}, Lng: ${"%.4f".format(latLng.longitude)}")
                         set("place_category", category)
                         set("place_category_ref", categoryRef)
+                        set("place_commute_direction", commuteDirection)
                     }
                     navController.popBackStack()
                 },

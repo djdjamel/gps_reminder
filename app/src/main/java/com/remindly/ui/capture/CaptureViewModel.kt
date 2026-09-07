@@ -33,6 +33,7 @@ data class CaptureUiState(
     val placeLabel: String? = null,
     val placeCategory: String? = null,
     val categoryRefType: String? = null,
+    val commuteDirection: String? = null,
     // Médias
     val imageUris: List<Uri> = emptyList(),
     val audioPath: String? = null,
@@ -66,14 +67,22 @@ class CaptureViewModel @Inject constructor(
         _uiState.update { it.copy(triggerTimeMillis = null) }
     }
 
-    fun setPlace(lat: Double, lng: Double, label: String?, category: String? = null, categoryRefType: String? = null) {
+    fun setPlace(
+        lat: Double,
+        lng: Double,
+        label: String?,
+        category: String? = null,
+        categoryRefType: String? = null,
+        commuteDirection: String? = null
+    ) {
         _uiState.update {
             it.copy(
                 placeLat = lat,
                 placeLng = lng,
                 placeLabel = label ?: "Lieu sélectionné",
                 placeCategory = category,
-                categoryRefType = categoryRefType
+                categoryRefType = categoryRefType,
+                commuteDirection = commuteDirection
             )
         }
     }
@@ -85,7 +94,8 @@ class CaptureViewModel @Inject constructor(
                 placeLng = null,
                 placeLabel = null,
                 placeCategory = null,
-                categoryRefType = null
+                categoryRefType = null,
+                commuteDirection = null
             )
         }
     }
@@ -148,7 +158,8 @@ class CaptureViewModel @Inject constructor(
                 placeRadiusM = if (state.placeLat != null) 120f else null,
                 placeLabel = state.placeLabel,
                 placeCategory = state.placeCategory,
-                categoryRefType = state.categoryRefType
+                categoryRefType = state.categoryRefType,
+                commuteDirection = state.commuteDirection
             )
             
             try {

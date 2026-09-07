@@ -30,13 +30,14 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.*
 import com.remindly.domain.model.CategoryReferenceType
+import com.remindly.domain.model.CommuteDirection
 import com.remindly.domain.model.PlaceCategory
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlacePickerScreen(
-    onPlaceSelected: (LatLng, String?, String?, String?) -> Unit,
+    onPlaceSelected: (LatLng, String?, String?, String?, String?) -> Unit,
     onNavigateBack: () -> Unit,
     viewModel: PlacePickerViewModel = hiltViewModel()
 ) {
@@ -315,7 +316,7 @@ fun PlacePickerScreen(
                         Button(
                             onClick = {
                                 val label = selectedLocationName ?: "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
-                                onPlaceSelected(selectedLocation, label, null, null)
+                                onPlaceSelected(selectedLocation, label, null, null, null)
                             },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp)
@@ -332,11 +333,11 @@ fun PlacePickerScreen(
                     .fillMaxSize()
                     .padding(paddingValues),
                 userSettings = userSettings,
-                onCategoryConfirmed = { category, refType ->
+                onCategoryConfirmed = { category, refType, commuteDirection ->
                     val label = "À proximité : ${category.displayName}"
                     val ref = if (refType == CategoryReferenceType.COMMUTE_ROUTE) "COMMUTE_ROUTE" else "CURRENT_LOCATION"
                     val loc = currentLocation ?: LatLng(0.0, 0.0)
-                    onPlaceSelected(loc, label, category.id, ref)
+                    onPlaceSelected(loc, label, category.id, ref, commuteDirection.id)
                 }
             )
         }
@@ -347,10 +348,11 @@ fun PlacePickerScreen(
 private fun CategoryPickerTab(
     modifier: Modifier = Modifier,
     userSettings: com.remindly.data.settings.VoiceAlarmSettings,
-    onCategoryConfirmed: (PlaceCategory, CategoryReferenceType) -> Unit
+    onCategoryConfirmed: (PlaceCategory, CategoryReferenceType, CommuteDirection) -> Unit
 ) {
     var selectedCategory by remember { mutableStateOf(PlaceCategory.SUPERMARKET) }
     var selectedRefType by remember { mutableStateOf(CategoryReferenceType.CURRENT_LOCATION) }
+    var selectedDirection by remember { mutableStateOf(CommuteDirection.RETURN) }
 
     Column(
         modifier = modifier
@@ -359,7 +361,7 @@ private fun CategoryPickerTab(
     ) {
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
                 "Choisissez un type de commerce",
@@ -462,36 +464,90 @@ private fun CategoryPickerTab(
             }
 
             val hasCommute = userSettings.hasCommuteRoute
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(enabled = hasCommute) {
-                        if (hasCommute) selectedRefType = CategoryReferenceType.COMMUTE_ROUTE
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(enabled = hasCommute) {
+                            if (hasCommute) selectedRefType = CategoryReferenceType.COMMUTE_ROUTE
+                        }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = selectedRefType == CategoryReferenceType.COMMUTE_ROUTE,
+                        onClick = { if (hasCommute) selectedRefType = CategoryReferenceType.COMMUTE_ROUTE },
+                        enabled = hasCommute
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            "Sur mon trajet habituel",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = if (hasCommute) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                        Text(
+                            if (hasCommute)
+                                "${userSettings.commuteStartLabel ?: "Départ"} ➔ ${userSettings.commuteEndLabel ?: "Arrivée"}"
+                            else "Non configuré (à définir dans Paramètres ⚙️)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RadioButton(
-                    selected = selectedRefType == CategoryReferenceType.COMMUTE_ROUTE,
-                    onClick = { if (hasCommute) selectedRefType = CategoryReferenceType.COMMUTE_ROUTE },
-                    enabled = hasCommute
-                )
-                Spacer(Modifier.width(8.dp))
-                Column {
-                    Text(
-                        "Sur mon trajet habituel",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = if (hasCommute) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                    )
-                    Text(
-                        if (hasCommute)
-                            "${userSettings.commuteStartLabel ?: "Départ"} ➔ ${userSettings.commuteEndLabel ?: "Arrivée"}"
-                        else "Non configuré (à définir dans Paramètres ⚙️)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                }
+
+                // Sous-options de direction (Aller / Retour / Les deux)
+                if (selectedRefType == CategoryReferenceType.COMMUTE_ROUTE && hasCommute) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 32.dp, top = 4.dp, bottom = 4.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                "Moment du déclenchement :",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.height(4.dp))
+
+                            CommuteDirection.entries.forEach { direction ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { selectedDirection = direction }
+                                        .padding(vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = selectedDirection == direction,
+                                        onClick = { selectedDirection = direction }
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Column {
+                                        Text(
+                                            direction.displayName,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            direction.description,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -499,7 +555,7 @@ private fun CategoryPickerTab(
         Spacer(Modifier.height(8.dp))
 
         Button(
-            onClick = { onCategoryConfirmed(selectedCategory, selectedRefType) },
+            onClick = { onCategoryConfirmed(selectedCategory, selectedRefType, selectedDirection) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
         ) {

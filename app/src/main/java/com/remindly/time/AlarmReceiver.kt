@@ -24,6 +24,9 @@ class AlarmReceiver : BroadcastReceiver() {
     @Inject
     lateinit var alarmScheduler: AlarmScheduler
 
+    @Inject
+    lateinit var geofenceManager: com.remindly.location.GeofenceManager
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -36,6 +39,11 @@ class AlarmReceiver : BroadcastReceiver() {
             try {
                 val reminder = reminderRepository.getById(reminderId) ?: return@launch
                 if (reminder.status != ReminderStatus.ACTIVE) return@launch
+
+                // Si le rappel a une catégorie de lieu, armer les géofences de POI (fallback temporel)
+                if (reminder.placeCategory != null) {
+                    geofenceManager.armCategoryPoIs(reminder)
+                }
 
                 // 1. Afficher la notification ou jouer l'audio
                 val audioAttachment = reminder.attachments
@@ -55,11 +63,10 @@ class AlarmReceiver : BroadcastReceiver() {
                     notifier.showTimeReminder(reminder)
                 }
 
-                // 2. Gestion de la répétition
-                // Note: En Phase 2, nous aurions besoin du RepeatRule sur le Reminder.
-                // Pour l'instant, on marque juste COMPLETED car on n'a pas encore ajouté RepeatRule au Reminder domain model.
-                // TODO: Ajouter RepeatRule au modèle de domaine et implémenter la reprogrammation.
-                reminderRepository.setStatus(reminderId, ReminderStatus.COMPLETED)
+                // 2. Si le rappel n'attend pas encore un lieu (trigger TIME pur), marquer COMPLETED
+                if (reminder.triggerType == com.remindly.domain.model.TriggerType.TIME) {
+                    reminderRepository.setStatus(reminderId, ReminderStatus.COMPLETED)
+                }
 
             } finally {
                 pendingResult.finish()

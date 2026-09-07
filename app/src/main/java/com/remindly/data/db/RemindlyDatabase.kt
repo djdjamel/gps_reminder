@@ -27,7 +27,7 @@ import com.remindly.data.db.dao.CollaboratorDao
         PendingSyncEntity::class,
         CollaboratorEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

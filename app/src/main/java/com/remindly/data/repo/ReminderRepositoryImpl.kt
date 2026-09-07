@@ -111,6 +111,7 @@ class ReminderRepositoryImpl @Inject constructor(
             placeLabel = reminder.placeLabel,
             placeCategory = reminder.placeCategory,
             categoryRefType = reminder.categoryRefType,
+            commuteDirection = reminder.commuteDirection,
             sortOrder = reminder.sortOrder,
             authorId = reminder.authorId,
             authorName = reminder.authorName
@@ -210,6 +211,7 @@ class ReminderRepositoryImpl @Inject constructor(
             placeLabel = placeLabel,
             placeCategory = placeCategory,
             categoryRefType = categoryRefType,
+            commuteDirection = commuteDirection,
             sortOrder = sortOrder,
             authorId = authorId,
             authorName = authorName,

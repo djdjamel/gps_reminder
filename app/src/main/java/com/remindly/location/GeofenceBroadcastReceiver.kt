@@ -54,7 +54,20 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 try {
                     val handledReminderIds = mutableSetOf<Long>()
                     for (geofence in triggeringGeofences) {
-                        // Extrait l'ID du rappel (supporte "42", "42_geo_3" ou "42_geo_3__Base64")
+                        // 1. Interception de l'étape intermédiaire (Arrivée au travail / destination)
+                        if (geofence.requestId.endsWith("_stage_dest")) {
+                            val reminderId = geofence.requestId.substringBefore("_").toLongOrNull() ?: continue
+                            if (!handledReminderIds.add(reminderId)) continue
+
+                            val reminder = reminderRepository.getById(reminderId) ?: continue
+                            android.util.Log.i("GeofenceReceiver", "🎯 ÉTAPE ATTEINTE (Arrivée à destination pour rappel $reminderId: '${reminder.text}'). Armement des POIs pour le retour !")
+
+                            geofenceManager.removeSingleGeofence(geofence.requestId)
+                            geofenceManager.armCategoryPoIs(reminder)
+                            continue
+                        }
+
+                        // 2. Déclenchement d'un POI ou lieu fixe
                         val reminderId = geofence.requestId.substringBefore("_").toLongOrNull() ?: continue
                         if (!handledReminderIds.add(reminderId)) continue
 
