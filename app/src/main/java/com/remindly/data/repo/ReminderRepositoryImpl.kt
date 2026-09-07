@@ -1,9 +1,7 @@
 package com.remindly.data.repo
 
 import com.remindly.data.db.dao.AttachmentDao
-import com.remindly.data.db.dao.PendingSyncDao
 import com.remindly.data.db.dao.ReminderDao
-import com.remindly.data.db.entity.PendingSyncEntity
 import com.remindly.data.db.entity.ReminderAttachmentEntity
 import com.remindly.data.db.entity.ReminderEntity
 import com.remindly.domain.model.Attachment
@@ -17,9 +15,6 @@ import kotlinx.coroutines.flow.flowOf
 import com.remindly.auth.AuthManager
 import com.remindly.auth.WorkspaceManager
 import com.remindly.data.remote.FirestoreDataSource
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import com.remindly.sync.MutationWorker
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,7 +23,6 @@ class ReminderRepositoryImpl @Inject constructor(
     private val reminderDao: ReminderDao,
     private val attachmentDao: AttachmentDao,
     private val attachmentStore: AttachmentStore,
-    private val pendingSyncDao: PendingSyncDao,
     private val workspaceManager: WorkspaceManager,
     private val authManager: AuthManager,
     private val firestoreDataSource: FirestoreDataSource,

@@ -2,7 +2,6 @@ package com.remindly.di
 
 import android.content.Context
 import com.remindly.data.db.dao.AttachmentDao
-import com.remindly.data.db.dao.PendingSyncDao
 import com.remindly.data.db.dao.ReminderDao
 import com.remindly.data.repo.ReminderRepository
 import com.remindly.data.repo.ReminderRepositoryImpl
@@ -24,8 +23,6 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import com.remindly.notify.AlarmScheduler
-import com.remindly.notify.AlarmSchedulerImpl
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -36,7 +33,6 @@ object RepositoryModule {
         reminderDao: ReminderDao,
         attachmentDao: AttachmentDao,
         attachmentStore: AttachmentStore,
-        pendingSyncDao: PendingSyncDao,
         workspaceManager: WorkspaceManager,
         authManager: AuthManager,
         firestoreDataSource: FirestoreDataSource,
@@ -46,17 +42,11 @@ object RepositoryModule {
             reminderDao, 
             attachmentDao, 
             attachmentStore, 
-            pendingSyncDao, 
             workspaceManager,
             authManager,
             firestoreDataSource,
             context
         )
-    }
-
-    @Provides
-    fun provideAlarmScheduler(@ApplicationContext context: Context): AlarmScheduler {
-        return AlarmSchedulerImpl(context)
     }
 
     @Provides

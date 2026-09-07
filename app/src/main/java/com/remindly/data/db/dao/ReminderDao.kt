@@ -54,8 +54,4 @@ interface ReminderDao {
 
     @Query("UPDATE reminders SET sortOrder = :sortOrder WHERE id = :id")
     suspend fun updateSortOrder(id: Long, sortOrder: Int)
-
-    @androidx.room.Transaction
-    @Query("SELECT * FROM reminders WHERE listId IS NULL AND status != 'ARCHIVED' ORDER BY sortOrder ASC, createdAt DESC")
-    fun observeAllWithAttachments(): Flow<List<com.remindly.data.db.entity.ReminderWithAttachments>>
 }

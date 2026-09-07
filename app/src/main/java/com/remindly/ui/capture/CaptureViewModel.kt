@@ -12,7 +12,7 @@ import com.remindly.domain.model.TriggerType
 import com.remindly.location.GeofenceManager
 import com.remindly.media.AttachmentStore
 import com.remindly.media.AudioRecorderManager
-import com.remindly.notify.AlarmScheduler
+import com.remindly.time.AlarmScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow

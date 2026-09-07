@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import com.remindly.data.repo.ReminderRepository
 import com.remindly.domain.model.ReminderStatus
+import com.remindly.time.AlarmScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

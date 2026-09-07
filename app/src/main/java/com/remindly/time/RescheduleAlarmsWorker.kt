@@ -20,46 +20,32 @@ class RescheduleAlarmsWorker @AssistedInject constructor(
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
-        try {
-            // Note: En Phase 2, nous n'avons pas encore ajouté le TriggerType et TriggerTime au Reminder de domaine.
-            // Le repository observePersonalActive retourne tous les actifs.
-            // On devrait filtrer par triggerType == TIME. 
-            // Pour le scaffold, on considère que cela sera ajouté dans l'intégration UI.
-            
-            /* Code simulé pour la reprogrammation
+        return try {
             val activeReminders = reminderRepository.observePersonalActive().first()
-            val timeReminders = activeReminders.filter { it.triggerType == TriggerType.TIME }
+            val timeReminders = activeReminders.filter { 
+                (it.triggerType == TriggerType.TIME || it.triggerType == TriggerType.BOTH) && 
+                it.status == ReminderStatus.ACTIVE && 
+                it.triggerTimeMillis != null 
+            }
 
+            val now = System.currentTimeMillis()
             for (reminder in timeReminders) {
-                // Roll-forward pour les répétitions si la date est dépassée
                 val triggerTime = reminder.triggerTimeMillis ?: continue
-                if (triggerTime > System.currentTimeMillis()) {
+                if (triggerTime > now) {
                     alarmScheduler.schedule(reminder, triggerTime)
-                } else if (reminder.isRepeating) {
-                    val nextTime = NextOccurrenceCalculator.calculateNext(
-                        System.currentTimeMillis(),
-                        triggerTime,
-                        reminder.repeatRule!!,
-                        reminder.repeatIntervalMin,
-                        reminder.repeatDaysMask
-                    )
-                    if (nextTime != null) {
-                        // TODO: Save new triggerTime
-                        alarmScheduler.schedule(reminder, nextTime)
-                    } else {
+                } else {
+                    // Notifier en retard pour les rappels échus pendant l'arrêt du téléphone
+                    val notifier = com.remindly.notify.ReminderNotifier(applicationContext)
+                    notifier.showTimeReminder(reminder)
+                    if (reminder.triggerType == TriggerType.TIME) {
                         reminderRepository.setStatus(reminder.id, ReminderStatus.COMPLETED)
                     }
-                } else {
-                    // Notifier en retard pour les one-shots manqués
-                    val notifier = ReminderNotifier(applicationContext)
-                    notifier.showTimeReminder(reminder)
                 }
             }
-            */
-            
-            return Result.success()
+            Result.success()
         } catch (e: Exception) {
-            return Result.retry()
+            e.printStackTrace()
+            Result.retry()
         }
     }
 }

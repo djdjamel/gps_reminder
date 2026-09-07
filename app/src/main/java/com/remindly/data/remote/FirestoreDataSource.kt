@@ -133,6 +133,9 @@ class FirestoreDataSource @Inject constructor() {
             placeLng = getDouble("placeLng"),
             placeRadiusM = getDouble("placeRadiusM")?.toFloat(),
             placeLabel = getString("placeLabel"),
+            placeCategory = getString("placeCategory"),
+            categoryRefType = getString("categoryRefType"),
+            commuteDirection = getString("commuteDirection"),
             authorId = getString("senderId"),
             authorName = getString("senderName")
         )
@@ -152,7 +155,10 @@ class FirestoreDataSource @Inject constructor() {
             "placeLat" to reminder.placeLat,
             "placeLng" to reminder.placeLng,
             "placeRadiusM" to reminder.placeRadiusM,
-            "placeLabel" to reminder.placeLabel
+            "placeLabel" to reminder.placeLabel,
+            "placeCategory" to reminder.placeCategory,
+            "categoryRefType" to reminder.categoryRefType,
+            "commuteDirection" to reminder.commuteDirection
         )
         // Use a consistent String ID for Firestore. If reminder.id is 0, generate one, else use it.
         val docId = if (reminder.id == 0L) System.currentTimeMillis().toString() else reminder.id.toString()

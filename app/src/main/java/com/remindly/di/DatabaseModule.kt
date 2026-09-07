@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.room.Room
 import com.remindly.data.db.RemindlyDatabase
 import com.remindly.data.db.dao.AttachmentDao
-import com.remindly.data.db.dao.PendingSyncDao
 import com.remindly.data.db.dao.ReminderDao
 import com.remindly.data.db.dao.SavedPlaceDao
 import com.remindly.data.db.dao.SharedListDao
@@ -40,11 +39,6 @@ object DatabaseModule {
     @Provides
     fun provideSharedListDao(database: RemindlyDatabase): SharedListDao {
         return database.sharedListDao()
-    }
-
-    @Provides
-    fun providePendingSyncDao(database: RemindlyDatabase): PendingSyncDao {
-        return database.pendingSyncDao()
     }
 
     @Provides

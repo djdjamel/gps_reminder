@@ -12,9 +12,6 @@ interface AttachmentDao {
     suspend fun insert(attachment: ReminderAttachmentEntity): Long
 
     @Query("SELECT * FROM reminder_attachments WHERE reminderId = :reminderId ORDER BY orderIndex ASC")
-    fun observeByReminderId(reminderId: Long): Flow<List<ReminderAttachmentEntity>>
-
-    @Query("SELECT * FROM reminder_attachments WHERE reminderId = :reminderId ORDER BY orderIndex ASC")
     suspend fun getByReminderId(reminderId: Long): List<ReminderAttachmentEntity>
 
     @Query("DELETE FROM reminder_attachments WHERE id = :attachmentId")
