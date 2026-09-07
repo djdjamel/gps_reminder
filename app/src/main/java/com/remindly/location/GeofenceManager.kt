@@ -123,8 +123,8 @@ class GeofenceManager @Inject constructor(
                     // 2. Rappel à adresse fixe unique
                     registerSingleGeofence(reminder.id.toString(), reminder.placeLat, reminder.placeLng, reminder.placeRadiusM ?: 100f)
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (t: Throwable) {
+                t.printStackTrace()
             }
         }
     }

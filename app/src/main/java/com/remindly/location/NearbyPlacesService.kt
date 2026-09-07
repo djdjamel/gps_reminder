@@ -3,7 +3,7 @@ package com.remindly.location
 import android.content.Context
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.places.api.Places
-import com.google.android.libraries.places.api.model.CircularBounds
+import com.google.android.libraries.places.api.model.RectangularBounds
 import com.google.android.libraries.places.api.model.Place
 import com.google.android.libraries.places.api.net.FetchPlaceRequest
 import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
@@ -50,8 +50,11 @@ class NearbyPlacesService @Inject constructor(
         maxResults: Int = 20
     ): List<NearbyPlace> = kotlinx.coroutines.supervisorScope {
         try {
-            val centerLatLng = LatLng(centerLat, centerLng)
-            val bounds = CircularBounds.newInstance(centerLatLng, radiusMeters.toDouble())
+            val latOffset = radiusMeters / 111320.0
+            val lngOffset = radiusMeters / (111320.0 * cos(Math.toRadians(centerLat)).coerceAtLeast(0.01))
+            val southwest = LatLng(centerLat - latOffset, centerLng - lngOffset)
+            val northeast = LatLng(centerLat + latOffset, centerLng + lngOffset)
+            val bounds = RectangularBounds.newInstance(southwest, northeast)
 
             val request = FindAutocompletePredictionsRequest.builder()
                 .setQuery(category.searchQuery)
@@ -60,7 +63,8 @@ class NearbyPlacesService @Inject constructor(
 
             val response = try {
                 placesClient.findAutocompletePredictions(request).await()
-            } catch (e: Exception) {
+            } catch (t: Throwable) {
+                t.printStackTrace()
                 return@supervisorScope emptyList()
             }
             val predictions = response.autocompletePredictions.take(maxResults)
@@ -85,7 +89,7 @@ class NearbyPlacesService @Inject constructor(
                                 distanceMeters = distance
                             )
                         } else null
-                    } catch (e: Exception) {
+                    } catch (t: Throwable) {
                         null
                     }
                 }
@@ -94,7 +98,8 @@ class NearbyPlacesService @Inject constructor(
             placesDeferred.awaitAll()
                 .filterNotNull()
                 .sortedBy { it.distanceMeters }
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
+            t.printStackTrace()
             emptyList()
         }
     }
@@ -128,7 +133,8 @@ class NearbyPlacesService @Inject constructor(
             }
 
             allPlaces.take(25)
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
+            t.printStackTrace()
             emptyList()
         }
     }
