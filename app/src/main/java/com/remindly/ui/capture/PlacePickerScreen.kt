@@ -335,7 +335,8 @@ fun PlacePickerScreen(
                 onCategoryConfirmed = { category, refType ->
                     val label = "À proximité : ${category.displayName}"
                     val ref = if (refType == CategoryReferenceType.COMMUTE_ROUTE) "COMMUTE_ROUTE" else "CURRENT_LOCATION"
-                    onPlaceSelected(fallbackLocation, label, category.id, ref)
+                    val loc = currentLocation ?: LatLng(0.0, 0.0)
+                    onPlaceSelected(loc, label, category.id, ref)
                 }
             )
         }

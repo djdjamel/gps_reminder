@@ -30,13 +30,23 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val geofencingEvent = GeofencingEvent.fromIntent(intent)
-        if (geofencingEvent == null || geofencingEvent.hasError()) return
+        if (geofencingEvent == null) {
+            android.util.Log.w("GeofenceReceiver", "onReceive: geofencingEvent is null")
+            return
+        }
+        if (geofencingEvent.hasError()) {
+            android.util.Log.e("GeofenceReceiver", "onReceive: geofencingEvent error code = ${geofencingEvent.errorCode}")
+            return
+        }
 
         val geofenceTransition = geofencingEvent.geofenceTransition
+        android.util.Log.i("GeofenceReceiver", "onReceive: Transition reçue = $geofenceTransition (1=ENTER, 2=EXIT)")
+
         if (geofenceTransition == Geofence.GEOFENCE_TRANSITION_ENTER ||
             geofenceTransition == Geofence.GEOFENCE_TRANSITION_EXIT) {
 
             val triggeringGeofences = geofencingEvent.triggeringGeofences ?: return
+            android.util.Log.i("GeofenceReceiver", "onReceive: ${triggeringGeofences.size} géofences déclenchées: ${triggeringGeofences.map { it.requestId }}")
             
             val pendingResult = goAsync()
             scope.launch {
@@ -48,6 +58,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                         if (!handledReminderIds.add(reminderId)) continue
 
                         val reminder = reminderRepository.getById(reminderId) ?: continue
+                        android.util.Log.i("GeofenceReceiver", "DÉCLENCHEMENT DU RAPPEL $reminderId: '${reminder.text}' (Catégorie: ${reminder.placeCategory})")
                         
                         if (reminder.status == ReminderStatus.ACTIVE) {
                             val audioAttachment = reminder.attachments

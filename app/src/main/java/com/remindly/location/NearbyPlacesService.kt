@@ -1,19 +1,19 @@
 package com.remindly.location
 
 import android.content.Context
+import android.util.Log
 import com.google.android.gms.maps.model.LatLng
-import com.google.android.libraries.places.api.Places
-import com.google.android.libraries.places.api.model.RectangularBounds
-import com.google.android.libraries.places.api.model.Place
-import com.google.android.libraries.places.api.net.FetchPlaceRequest
-import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
-import com.google.android.libraries.places.api.net.PlacesClient
 import com.remindly.domain.model.PlaceCategory
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.*
@@ -30,17 +30,12 @@ data class NearbyPlace(
 class NearbyPlacesService @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-
-    private val placesClient: PlacesClient by lazy {
-        if (!Places.isInitialized()) {
-            Places.initialize(context, "AIzaSyBCv_6Tt9fu9eLQDwIHiFSYjDiRqZkC8eA")
-        }
-        Places.createClient(context)
-    }
+    private val apiKey = "AIzaSyBCv_6Tt9fu9eLQDwIHiFSYjDiRqZkC8eA"
+    private val tag = "NearbyPlacesService"
 
     /**
      * Recherche les établissements d'une catégorie autour d'un point central.
-     * Trie les résultats par distance croissante.
+     * Utilise Google Places nearbysearch HTTP officiel avec les types officiels (supermarket, etc.).
      */
     suspend fun searchNearby(
         centerLat: Double,
@@ -48,100 +43,86 @@ class NearbyPlacesService @Inject constructor(
         radiusMeters: Int,
         category: PlaceCategory,
         maxResults: Int = 20
-    ): List<NearbyPlace> = kotlinx.coroutines.supervisorScope {
+    ): List<NearbyPlace> = supervisorScope {
         try {
-            val latOffset = radiusMeters / 111320.0
-            val lngOffset = radiusMeters / (111320.0 * cos(Math.toRadians(centerLat)).coerceAtLeast(0.01))
-            val southwest = LatLng(centerLat - latOffset, centerLng - lngOffset)
-            val northeast = LatLng(centerLat + latOffset, centerLng + lngOffset)
-            val bounds = RectangularBounds.newInstance(southwest, northeast)
+            val allTypes = listOf(category.primaryType) + category.secondaryTypes
+            val placesMap = mutableMapOf<String, NearbyPlace>()
 
-            val request = FindAutocompletePredictionsRequest.builder()
-                .setQuery(category.searchQuery)
-                .setLocationBias(bounds)
-                .build()
-
-            val response = try {
-                placesClient.findAutocompletePredictions(request).await()
-            } catch (t: Throwable) {
-                t.printStackTrace()
-                return@supervisorScope emptyList()
+            // 1. Recherche par types officiels Google (ex: supermarket + convenience_store)
+            for (type in allTypes) {
+                val found = fetchNearbyPlacesHttp(centerLat, centerLng, radiusMeters, type = type, keyword = null)
+                for (p in found) {
+                    placesMap[p.placeId] = p
+                }
             }
-            val predictions = response.autocompletePredictions.take(maxResults)
 
-            val placeFields = listOf(Place.Field.ID, Place.Field.NAME, Place.Field.LAT_LNG)
-
-            val placesDeferred = predictions.map { prediction ->
-                async {
-                    try {
-                        val fetchRequest = FetchPlaceRequest.newInstance(prediction.placeId, placeFields)
-                        val fetchResponse = placesClient.fetchPlace(fetchRequest).await()
-                        val place = fetchResponse.place
-                        val latLng = place.latLng
-
-                        if (latLng != null) {
-                            val distance = calculateDistance(centerLat, centerLng, latLng.latitude, latLng.longitude)
-                            NearbyPlace(
-                                placeId = place.id ?: prediction.placeId,
-                                name = place.name ?: prediction.getPrimaryText(null).toString(),
-                                latitude = latLng.latitude,
-                                longitude = latLng.longitude,
-                                distanceMeters = distance
-                            )
-                        } else null
-                    } catch (t: Throwable) {
-                        null
+            // 2. Si aucun résultat (zone avec types moins précis), tenter avec les mots-clés
+            if (placesMap.isEmpty() && category.keywords.isNotEmpty()) {
+                for (kw in category.keywords.take(2)) {
+                    val found = fetchNearbyPlacesHttp(centerLat, centerLng, radiusMeters, type = null, keyword = kw)
+                    for (p in found) {
+                        placesMap[p.placeId] = p
                     }
                 }
             }
 
-            placesDeferred.awaitAll()
-                .filterNotNull()
-                .sortedBy { it.distanceMeters }
+            val sorted = placesMap.values.sortedBy { it.distanceMeters }.take(maxResults)
+            Log.d(tag, "searchNearby ($centerLat, $centerLng) category=${category.id} -> ${sorted.size} POIs trouvés")
+            sorted
         } catch (t: Throwable) {
-            t.printStackTrace()
+            Log.e(tag, "Erreur searchNearby: ${t.message}", t)
             emptyList()
         }
     }
 
     /**
-     * Recherche les établissements d'une catégorie le long d'une liste de waypoints.
+     * Recherche les établissements d'une catégorie le long d'une liste de waypoints (polyline de trajet).
+     * Échantillonne automatiquement les waypoints pour couvrir le trajet tous les 1 à 1.5 km.
      */
     suspend fun searchAlongWaypoints(
         waypoints: List<LatLng>,
         category: PlaceCategory,
-        radiusPerPointMeters: Int = 600
-    ): List<NearbyPlace> = kotlinx.coroutines.supervisorScope {
+        radiusPerPointMeters: Int = 1000
+    ): List<NearbyPlace> = supervisorScope {
         try {
-            val allPlaces = mutableListOf<NearbyPlace>()
-            val seenPlaceIds = mutableSetOf<String>()
+            if (waypoints.isEmpty()) return@supervisorScope emptyList()
 
-            for (point in waypoints) {
-                val found = searchNearby(
-                    centerLat = point.latitude,
-                    centerLng = point.longitude,
-                    radiusMeters = radiusPerPointMeters,
-                    category = category,
-                    maxResults = 6
-                )
+            // Filtrer les waypoints pour espacer les requêtes d'au moins 1200 mètres
+            val filteredWaypoints = downsampleWaypoints(waypoints, minDistanceMeters = 1200f)
+            Log.d(tag, "searchAlongWaypoints: ${waypoints.size} points initiaux réduits à ${filteredWaypoints.size} waypoints de recherche")
 
-                for (place in found) {
-                    if (seenPlaceIds.add(place.placeId)) {
-                        allPlaces.add(place)
-                    }
+            val placesMap = mutableMapOf<String, NearbyPlace>()
+
+            val deferredResults = filteredWaypoints.map { point ->
+                async {
+                    searchNearby(
+                        centerLat = point.latitude,
+                        centerLng = point.longitude,
+                        radiusMeters = radiusPerPointMeters,
+                        category = category,
+                        maxResults = 8
+                    )
                 }
             }
 
-            allPlaces.take(25)
+            val resultsList = deferredResults.awaitAll()
+            for (list in resultsList) {
+                for (place in list) {
+                    placesMap[place.placeId] = place
+                }
+            }
+
+            val totalFound = placesMap.values.toList()
+            Log.d(tag, "searchAlongWaypoints TOTAL: ${totalFound.size} POIs uniques trouvés le long du trajet")
+            totalFound.take(30)
         } catch (t: Throwable) {
-            t.printStackTrace()
+            Log.e(tag, "Erreur searchAlongWaypoints: ${t.message}", t)
             emptyList()
         }
     }
 
     /**
-     * Recherche les établissements d'une catégorie le long d'un itinéraire entre 2 points.
-     * Échantillonne des waypoints le long du trajet et fusionne/déduplique les résultats.
+     * Recherche le long d'une ligne droite entre départ et arrivée
      */
     suspend fun searchAlongRoute(
         startLat: Double,
@@ -149,15 +130,114 @@ class NearbyPlacesService @Inject constructor(
         endLat: Double,
         endLng: Double,
         category: PlaceCategory,
-        sampleCount: Int = 5,
-        radiusPerPointMeters: Int = 600
+        sampleCount: Int = 6,
+        radiusPerPointMeters: Int = 1000
     ): List<NearbyPlace> {
         val waypoints = generateWaypoints(startLat, startLng, endLat, endLng, sampleCount)
         return searchAlongWaypoints(waypoints, category, radiusPerPointMeters)
     }
 
     /**
-     * Génère N points équidistants entre le départ et l'arrivée
+     * Appel HTTP direct à Google Places nearbysearch
+     */
+    private suspend fun fetchNearbyPlacesHttp(
+        centerLat: Double,
+        centerLng: Double,
+        radiusMeters: Int,
+        type: String?,
+        keyword: String?
+    ): List<NearbyPlace> = withContext(Dispatchers.IO) {
+        try {
+            val sb = StringBuilder("https://maps.googleapis.com/maps/api/place/nearbysearch/json")
+            sb.append("?location=$centerLat,$centerLng")
+            sb.append("&radius=$radiusMeters")
+            sb.append("&language=fr")
+            if (!type.isNullOrBlank()) {
+                sb.append("&type=").append(URLEncoder.encode(type, "UTF-8"))
+            }
+            if (!keyword.isNullOrBlank()) {
+                sb.append("&keyword=").append(URLEncoder.encode(keyword, "UTF-8"))
+            }
+            sb.append("&key=").append(apiKey)
+
+            val url = URL(sb.toString())
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 7000
+            connection.readTimeout = 7000
+
+            val responseCode = connection.responseCode
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(responseText)
+                val status = json.optString("status")
+
+                if (status == "OK" || status == "ZERO_RESULTS") {
+                    val resultsArray = json.optJSONArray("results") ?: return@withContext emptyList()
+                    val places = mutableListOf<NearbyPlace>()
+
+                    for (i in 0 until resultsArray.length()) {
+                        val item = resultsArray.getJSONObject(i)
+                        val placeId = item.optString("place_id")
+                        val name = item.optString("name")
+                        val geometry = item.optJSONObject("geometry")
+                        val location = geometry?.optJSONObject("location")
+
+                        if (location != null && placeId.isNotBlank()) {
+                            val lat = location.getDouble("lat")
+                            val lng = location.getDouble("lng")
+                            val distance = calculateDistance(centerLat, centerLng, lat, lng)
+                            places.add(
+                                NearbyPlace(
+                                    placeId = placeId,
+                                    name = name,
+                                    latitude = lat,
+                                    longitude = lng,
+                                    distanceMeters = distance
+                                )
+                            )
+                        }
+                    }
+                    return@withContext places
+                } else {
+                    Log.w(tag, "nearbysearch returned status: $status")
+                }
+            }
+        } catch (t: Throwable) {
+            Log.e(tag, "fetchNearbyPlacesHttp error: ${t.message}")
+        }
+        emptyList()
+    }
+
+    /**
+     * Sous-échantillonne une liste de points pour garantir un espacement minimal
+     */
+    private fun downsampleWaypoints(points: List<LatLng>, minDistanceMeters: Float): List<LatLng> {
+        if (points.isEmpty()) return emptyList()
+        val result = mutableListOf<LatLng>()
+        var lastPoint = points.first()
+        result.add(lastPoint)
+
+        for (i in 1 until points.size) {
+            val current = points[i]
+            val distance = calculateDistance(lastPoint.latitude, lastPoint.longitude, current.latitude, current.longitude)
+            if (distance >= minDistanceMeters) {
+                result.add(current)
+                lastPoint = current
+            }
+        }
+
+        // Toujours inclure le point de fin si non proche du dernier ajouté
+        val finalPoint = points.last()
+        val distToLast = calculateDistance(result.last().latitude, result.last().longitude, finalPoint.latitude, finalPoint.longitude)
+        if (distToLast > minDistanceMeters / 2) {
+            result.add(finalPoint)
+        }
+        return result
+    }
+
+    /**
+     * Génère N points équidistants entre départ et arrivée
      */
     private fun generateWaypoints(
         startLat: Double,
@@ -180,7 +260,7 @@ class NearbyPlacesService @Inject constructor(
      * Calcul de la distance haversine en mètres
      */
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
-        val earthRadius = 6371000.0 // mètres
+        val earthRadius = 6371000.0
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
         val a = sin(dLat / 2).pow(2.0) +

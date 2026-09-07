@@ -4,43 +4,57 @@ enum class PlaceCategory(
     val id: String,
     val displayName: String,
     val iconName: String,
-    val searchQuery: String
+    val primaryType: String,
+    val secondaryTypes: List<String> = emptyList(),
+    val keywords: List<String> = emptyList()
 ) {
     SUPERMARKET(
         id = "SUPERMARKET",
         displayName = "Supérette / Supermarché",
         iconName = "shopping_cart",
-        searchQuery = "supermarché supérette épicerie"
+        primaryType = "supermarket",
+        secondaryTypes = listOf("convenience_store", "grocery_or_supermarket"),
+        keywords = listOf("supermarché", "supérette", "épicerie", "alimentation")
     ),
     PHARMACY(
         id = "PHARMACY",
         displayName = "Pharmacie",
         iconName = "local_pharmacy",
-        searchQuery = "pharmacie"
+        primaryType = "pharmacy",
+        secondaryTypes = listOf("drugstore"),
+        keywords = listOf("pharmacie")
     ),
     BAKERY(
         id = "BAKERY",
         displayName = "Boulangerie",
         iconName = "bakery_dining",
-        searchQuery = "boulangerie"
+        primaryType = "bakery",
+        secondaryTypes = emptyList(),
+        keywords = listOf("boulangerie", "pâtisserie")
     ),
     GAS_STATION(
         id = "GAS_STATION",
         displayName = "Station-service",
         iconName = "local_gas_station",
-        searchQuery = "station service"
+        primaryType = "gas_station",
+        secondaryTypes = emptyList(),
+        keywords = listOf("station-service", "essence", "naftal", "total")
     ),
     ATM(
         id = "ATM",
         displayName = "Distributeur / Banque",
         iconName = "atm",
-        searchQuery = "distributeur banque"
+        primaryType = "atm",
+        secondaryTypes = listOf("bank"),
+        keywords = listOf("distributeur", "banque", "dab")
     ),
     RESTAURANT(
         id = "RESTAURANT",
         displayName = "Café / Restaurant",
         iconName = "restaurant",
-        searchQuery = "restaurant café"
+        primaryType = "restaurant",
+        secondaryTypes = listOf("cafe", "meal_takeaway", "fast_food_restaurant"),
+        keywords = listOf("restaurant", "café", "pizzeria", "fast food")
     );
 
     companion object {
