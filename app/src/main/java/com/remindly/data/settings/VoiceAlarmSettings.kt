@@ -8,6 +8,10 @@ data class VoiceAlarmSettings(
     val poiSearchRadiusKm: Int = 3,
     // Rayon de détection de chaque géofence de commerce POI en mètres (défaut : 450m)
     val poiDetectionRadiusM: Int = 450,
+    // Annoncer le nom du lieu à voix haute par synthèse vocale (TTS)
+    val announcePlaceByVoice: Boolean = true,
+    // Lire les rappels textuels à voix haute par synthèse vocale
+    val readTextRemindersAloud: Boolean = true,
     // Rayon de la zone tampon de sortie (Fenêtre glissante pour déplacements) en mètres (défaut : 2500m / 2.5 km)
     val rollingExitRadiusM: Int = 2500,
     // Trajet habituel

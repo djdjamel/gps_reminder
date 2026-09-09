@@ -79,6 +79,18 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateAnnouncePlaceByVoice(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setAnnouncePlaceByVoice(enabled)
+        }
+    }
+
+    fun updateReadTextRemindersAloud(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setReadTextRemindersAloud(enabled)
+        }
+    }
+
     fun setCommuteStart(lat: Double, lng: Double, label: String) {
         viewModelScope.launch {
             settingsRepository.setCommuteStart(lat, lng, label)

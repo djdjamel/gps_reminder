@@ -8,6 +8,7 @@ import android.util.Base64
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
 import com.remindly.data.repo.ReminderRepository
+import com.remindly.data.settings.VoiceAlarmSettingsRepository
 import com.remindly.domain.model.AttachmentType
 import com.remindly.domain.model.ReminderStatus
 import com.remindly.media.AudioAlarmService
@@ -28,6 +29,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
     @Inject
     lateinit var geofenceManager: GeofenceManager
+
+    @Inject
+    lateinit var settingsRepository: VoiceAlarmSettingsRepository
 
     @Inject
     lateinit var appLogger: AppLogger
@@ -159,25 +163,29 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
                             if (!isCooldown) {
                                 prefs.edit().putLong("last_trigger_time_${reminderId}", now).apply()
-                                if (audioAttachment != null) {
+                                
+                                val notifier = ReminderNotifier(context)
+                                notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName)
+
+                                val settings = settingsRepository.getSettings()
+                                val shouldStartAudioService = (audioAttachment != null) ||
+                                    ((settings.readTextRemindersAloud || settings.announcePlaceByVoice) && !reminder.text.isNullOrBlank())
+
+                                if (shouldStartAudioService) {
                                     try {
                                         AudioAlarmService.start(
                                             context = context,
-                                            audioPath = audioAttachment.localPath,
-                                            reminderText = reminder.text ?: "Rappel vocal",
+                                            audioPath = audioAttachment?.localPath,
+                                            reminderText = reminder.text ?: "Rappel",
                                             reminderId = reminder.id,
                                             placeName = detectedPlaceName ?: reminder.placeLabel
                                         )
-                                        appLogger.success("NOTIFICATION_FIRED", "Alarme vocale AudioAlarmService lancée", reminderId)
+                                        appLogger.success("NOTIFICATION_FIRED", "Alarme vocale/TTS lancée", reminderId)
                                     } catch (e: Exception) {
-                                        android.util.Log.e("GeofenceReceiver", "Impossible de démarrer AudioAlarmService: ${e.message}. Notification standard.")
+                                        android.util.Log.e("GeofenceReceiver", "Impossible de démarrer AudioAlarmService: ${e.message}")
                                         appLogger.w("NOTIFICATION_FIRED", "Repli sur notification standard : ${e.message}", reminderId)
-                                        val notifier = ReminderNotifier(context)
-                                        notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName)
                                     }
                                 } else {
-                                    val notifier = ReminderNotifier(context)
-                                    notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName)
                                     appLogger.success("NOTIFICATION_FIRED", "Notification affichée pour '${reminder.text}'", reminderId)
                                 }
                             } else {

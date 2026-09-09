@@ -40,6 +40,9 @@ class AudioAlarmService : Service() {
     @Inject
     lateinit var settingsRepository: VoiceAlarmSettingsRepository
 
+    @Inject
+    lateinit var ttsManager: TtsManager
+
     private var mediaPlayer: MediaPlayer? = null
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -61,19 +64,53 @@ class AudioAlarmService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 val audioPath = intent.getStringExtra(EXTRA_AUDIO_PATH)
-                    ?: run { stopSelf(); return START_NOT_STICKY }
-                val reminderText = intent.getStringExtra(EXTRA_REMINDER_TEXT) ?: "Rappel vocal"
+                val reminderText = intent.getStringExtra(EXTRA_REMINDER_TEXT) ?: "Rappel"
                 val reminderId = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
                 val placeName = intent.getStringExtra(EXTRA_PLACE_NAME)
+
+                if (audioPath == null && reminderText.isBlank()) {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
 
                 showForegroundNotification(reminderId, reminderText, placeName)
 
                 serviceScope.launch {
                     val settings = settingsRepository.getSettings()
-                    playAudio(audioPath, settings)
+
+                    if (settings.vibrate) {
+                        startVibration()
+                    }
+
+                    val shouldAnnouncePlace = settings.announcePlaceByVoice && !placeName.isNullOrBlank()
+                    val shouldReadText = settings.readTextRemindersAloud && audioPath == null
+
+                    if (shouldAnnouncePlace || shouldReadText) {
+                        val ttsPhrase = when {
+                            audioPath != null && shouldAnnouncePlace -> "Rappel à proximité de $placeName."
+                            audioPath == null && shouldAnnouncePlace -> "Rappel : $reminderText, à proximité de $placeName."
+                            else -> "Rappel : $reminderText."
+                        }
+
+                        requestAudioFocus()
+                        ttsManager.speak(ttsPhrase, volume = settings.volume) {
+                            if (audioPath != null) {
+                                playAudio(audioPath, settings)
+                            } else {
+                                stopSelf()
+                            }
+                        }
+                    } else if (audioPath != null) {
+                        playAudio(audioPath, settings)
+                    } else {
+                        stopSelf()
+                    }
                 }
             }
-            ACTION_STOP -> stopSelf()
+            ACTION_STOP -> {
+                ttsManager.stop()
+                stopSelf()
+            }
         }
         return START_NOT_STICKY
     }
@@ -235,6 +272,7 @@ class AudioAlarmService : Service() {
 
     override fun onDestroy() {
         serviceScope.cancel()
+        ttsManager.stop()
         stopVibration()
 
         // Libérer l'audio focus
@@ -285,17 +323,19 @@ class AudioAlarmService : Service() {
         const val CHANNEL_ID          = "audio_alarm_channel"
         const val NOTIFICATION_ID     = 9999
 
-        /** Démarre le service de lecture audio */
+        /** Démarre le service de lecture audio / TTS */
         fun start(
             context: Context,
-            audioPath: String,
+            audioPath: String? = null,
             reminderText: String,
             reminderId: Long,
             placeName: String? = null
         ) {
             val intent = Intent(context, AudioAlarmService::class.java).apply {
                 action = ACTION_START
-                putExtra(EXTRA_AUDIO_PATH, audioPath)
+                if (audioPath != null) {
+                    putExtra(EXTRA_AUDIO_PATH, audioPath)
+                }
                 putExtra(EXTRA_REMINDER_TEXT, reminderText)
                 putExtra(EXTRA_REMINDER_ID, reminderId)
                 if (placeName != null) {

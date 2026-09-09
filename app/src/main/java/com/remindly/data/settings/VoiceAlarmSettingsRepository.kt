@@ -28,6 +28,8 @@ interface VoiceAlarmSettingsRepository {
     suspend fun setPoiSearchRadius(radiusKm: Int)
     suspend fun setPoiDetectionRadiusM(radiusM: Int)
     suspend fun setRollingExitRadiusM(radiusM: Int)
+    suspend fun setAnnouncePlaceByVoice(enabled: Boolean)
+    suspend fun setReadTextRemindersAloud(enabled: Boolean)
     suspend fun setCommuteStart(lat: Double, lng: Double, label: String)
     suspend fun setCommuteEnd(lat: Double, lng: Double, label: String)
     suspend fun setCommuteRoute(
@@ -53,6 +55,8 @@ class VoiceAlarmSettingsRepositoryImpl(
         val KEY_POI_RADIUS = intPreferencesKey("poi_search_radius_km")
         val KEY_POI_DETECTION_RADIUS_M = intPreferencesKey("poi_detection_radius_m")
         val KEY_ROLLING_EXIT_RADIUS_M = intPreferencesKey("rolling_exit_radius_m")
+        val KEY_ANNOUNCE_PLACE_BY_VOICE = booleanPreferencesKey("announce_place_by_voice")
+        val KEY_READ_TEXT_REMINDERS_ALOUD = booleanPreferencesKey("read_text_reminders_aloud")
         
         // Trajet habituel
         val KEY_COMMUTE_START_LAT = doublePreferencesKey("commute_start_lat")
@@ -79,6 +83,8 @@ class VoiceAlarmSettingsRepositoryImpl(
                 vibrate = preferences[PreferencesKeys.KEY_VIBRATE] ?: true,
                 poiSearchRadiusKm = preferences[PreferencesKeys.KEY_POI_RADIUS] ?: 3,
                 poiDetectionRadiusM = preferences[PreferencesKeys.KEY_POI_DETECTION_RADIUS_M] ?: 450,
+                announcePlaceByVoice = preferences[PreferencesKeys.KEY_ANNOUNCE_PLACE_BY_VOICE] ?: true,
+                readTextRemindersAloud = preferences[PreferencesKeys.KEY_READ_TEXT_REMINDERS_ALOUD] ?: true,
                 rollingExitRadiusM = preferences[PreferencesKeys.KEY_ROLLING_EXIT_RADIUS_M] ?: 2500,
                 commuteStartLat = preferences[PreferencesKeys.KEY_COMMUTE_START_LAT],
                 commuteStartLng = preferences[PreferencesKeys.KEY_COMMUTE_START_LNG],
@@ -127,6 +133,18 @@ class VoiceAlarmSettingsRepositoryImpl(
     override suspend fun setRollingExitRadiusM(radiusM: Int) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.KEY_ROLLING_EXIT_RADIUS_M] = radiusM.coerceIn(1000, 10000)
+        }
+    }
+
+    override suspend fun setAnnouncePlaceByVoice(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.KEY_ANNOUNCE_PLACE_BY_VOICE] = enabled
+        }
+    }
+
+    override suspend fun setReadTextRemindersAloud(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.KEY_READ_TEXT_REMINDERS_ALOUD] = enabled
         }
     }
 
