@@ -79,6 +79,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateGeofenceCooldownSeconds(seconds: Int) {
+        viewModelScope.launch {
+            settingsRepository.setGeofenceCooldownSeconds(seconds)
+        }
+    }
+
     fun updateAnnouncePlaceByVoice(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.setAnnouncePlaceByVoice(enabled)

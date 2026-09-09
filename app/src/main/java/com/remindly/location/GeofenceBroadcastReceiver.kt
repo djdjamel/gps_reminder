@@ -159,7 +159,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 .firstOrNull { it.type == AttachmentType.AUDIO }
                             val now = System.currentTimeMillis()
                             val lastTrigger = prefs.getLong("last_trigger_time_${reminderId}", 0L)
-                            val isCooldown = (now - lastTrigger) < 90_000L // 90s anti-bounce
+                            val settings = settingsRepository.getSettings()
+                            val cooldownMs = settings.geofenceCooldownSeconds * 1000L
+                            val isCooldown = (now - lastTrigger) < cooldownMs
 
                             if (!isCooldown) {
                                 prefs.edit().putLong("last_trigger_time_${reminderId}", now).apply()
@@ -167,7 +169,6 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 val notifier = ReminderNotifier(context)
                                 notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName)
 
-                                val settings = settingsRepository.getSettings()
                                 val shouldStartAudioService = (audioAttachment != null) ||
                                     ((settings.readTextRemindersAloud || settings.announcePlaceByVoice) && !reminder.text.isNullOrBlank())
 
@@ -191,7 +192,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             } else {
                                 val notifier = ReminderNotifier(context)
                                 notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName)
-                                appLogger.i("NOTIFICATION_FIRED", "Notification mise à jour pour '${detectedPlaceName ?: reminder.placeLabel}' (Cooldown audio actif)", reminderId)
+                                appLogger.i("NOTIFICATION_FIRED", "Notification mise à jour pour '${detectedPlaceName ?: reminder.placeLabel}' (Cooldown de ${settings.geofenceCooldownSeconds}s actif)", reminderId)
                             }
 
                             val updatedReminder = reminder.copy(

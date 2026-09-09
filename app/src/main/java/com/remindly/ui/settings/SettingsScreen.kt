@@ -659,6 +659,77 @@ fun SettingsScreen(
                         }
                     }
                 }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                // E. Délai Anti-Rebond (Cooldown entre alertes)
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Timelapse,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                "Délai anti-rebond entre alertes",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                "Temps d'attente minimal avant de refaire sonner le rappel pour un commerce voisin",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    val cooldownOptions = listOf(
+                        5 to "5 s (Très rapide)",
+                        10 to "10 s",
+                        15 to "15 s (Recommandé)",
+                        30 to "30 s",
+                        60 to "1 min",
+                        90 to "1m30"
+                    )
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        cooldownOptions.forEach { (seconds, label) ->
+                            val isSelected = settings.geofenceCooldownSeconds == seconds
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.updateGeofenceCooldownSeconds(seconds) },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                leadingIcon = if (isSelected) {
+                                    {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null,
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        }
+                    }
+                }
             }
 
             // ─── Section 3 : Canaux Système ───────────────────────────────────

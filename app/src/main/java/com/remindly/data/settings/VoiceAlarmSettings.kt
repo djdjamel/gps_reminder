@@ -14,6 +14,8 @@ data class VoiceAlarmSettings(
     val readTextRemindersAloud: Boolean = true,
     // Rayon de la zone tampon de sortie (Fenêtre glissante pour déplacements) en mètres (défaut : 2500m / 2.5 km)
     val rollingExitRadiusM: Int = 2500,
+    // Délai anti-rebond entre alertes successives pour le même rappel en secondes (défaut : 15s)
+    val geofenceCooldownSeconds: Int = 15,
     // Trajet habituel
     val commuteStartLat: Double? = null,
     val commuteStartLng: Double? = null,
