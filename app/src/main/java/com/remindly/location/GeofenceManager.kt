@@ -275,9 +275,40 @@ class GeofenceManager @Inject constructor(
                             handleGeofenceError(e, "Enregistrement des POIs pour rappel ${reminder.id}")
                         }
                 } else {
-                    val noPoiMsg = "Aucun POI trouvé pour la catégorie ${category.displayName} dans la zone"
+                    val noPoiMsg = "Aucun POI trouvé pour la catégorie ${category.displayName} dans la zone immédiate"
                     Log.w(tag, "ATTENTION: $noPoiMsg")
                     appLogger.w("POI_SEARCH", noPoiMsg, reminder.id)
+
+                    // Armement de la Fenêtre Glissante en veille même sans POI immédiat pour actualisation à la prochaine agglomération
+                    if (searchCenterLat != null && searchCenterLng != null && reminder.categoryRefType != CategoryReferenceType.COMMUTE_ROUTE.id) {
+                        val exitReqId = "${reminder.id}_exit_zone"
+                        val exitRadiusM = settings.rollingExitRadiusM.toFloat()
+                        val exitGeofence = Geofence.Builder()
+                            .setRequestId(exitReqId)
+                            .setCircularRegion(searchCenterLat, searchCenterLng, exitRadiusM)
+                            .setExpirationDuration(Geofence.NEVER_EXPIRE)
+                            .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_EXIT)
+                            .setNotificationResponsiveness(5000)
+                            .build()
+
+                        val currentTracked = prefs.getStringSet("geofences_${reminder.id}", emptySet()) ?: emptySet()
+                        prefs.edit().putStringSet("geofences_${reminder.id}", currentTracked + exitReqId).apply()
+
+                        val request = GeofencingRequest.Builder()
+                            .setInitialTrigger(0)
+                            .addGeofences(listOf(exitGeofence))
+                            .build()
+
+                        geofencingClient.addGeofences(request, geofencePendingIntent)
+                            .addOnSuccessListener {
+                                val exitArmedMsg = "Zone sans commerce immédiat. Fenêtre glissante armée en veille (${exitRadiusM.toInt()}m) pour actualisation à la prochaine agglomération."
+                                Log.i(tag, "armCategoryPoIs: $exitArmedMsg")
+                                appLogger.i("ROLLING_ZONE_ARMED", exitArmedMsg, reminder.id)
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e(tag, "Échec armement exit_zone de veille: ${e.message}")
+                            }
+                    }
                 }
             } catch (t: Throwable) {
                 Log.e(tag, "Exception dans armCategoryPoIs: ${t.message}", t)

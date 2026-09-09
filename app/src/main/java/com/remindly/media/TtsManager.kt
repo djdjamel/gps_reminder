@@ -101,6 +101,58 @@ class TtsManager @Inject constructor(
         }
     }
 
+    /**
+     * Prononce le texte et suspend la coroutine jusqu'à la fin de la diction (ou erreur).
+     */
+    suspend fun speakAwait(
+        text: String,
+        volume: Float = 1.0f
+    ): Boolean = withContext(Dispatchers.Main) {
+        val ready = ensureInitialized()
+        if (!ready || tts == null) {
+            Log.w(tag, "TTS non disponible pour prononcer : '$text'")
+            return@withContext false
+        }
+
+        suspendCancellableCoroutine { continuation ->
+            val utteranceId = UUID.randomUUID().toString()
+            val params = Bundle().apply {
+                putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, volume.coerceIn(0.1f, 1.0f))
+                putString(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioAttributes.USAGE_ALARM.toString())
+            }
+
+            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(id: String?) {
+                    Log.d(tag, "TTS onStart: $id")
+                }
+
+                override fun onDone(id: String?) {
+                    Log.d(tag, "TTS onDone: $id")
+                    if (id == utteranceId && continuation.isActive) {
+                        continuation.resume(true)
+                    }
+                }
+
+                override fun onError(id: String?) {
+                    Log.e(tag, "TTS onError: $id")
+                    if (id == utteranceId && continuation.isActive) {
+                        continuation.resume(false)
+                    }
+                }
+            })
+
+            continuation.invokeOnCancellation {
+                stop()
+            }
+
+            Log.i(tag, "Prononciation TTS (await) : \"$text\"")
+            val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+            if (result != TextToSpeech.SUCCESS && continuation.isActive) {
+                continuation.resume(false)
+            }
+        }
+    }
+
     fun stop() {
         try {
             tts?.stop()

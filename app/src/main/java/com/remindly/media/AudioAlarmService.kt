@@ -25,14 +25,19 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.ArrayDeque
 import javax.inject.Inject
+import kotlin.coroutines.resume
 
 /**
- * ForegroundService qui joue l'enregistrement vocal de l'utilisateur au déclenchement d'un rappel.
+ * ForegroundService qui joue l'enregistrement vocal de l'utilisateur ou la synthèse vocale au déclenchement d'un rappel.
  * Utilise USAGE_ALARM pour bypasser le mode "Ne pas déranger" et gère l'audio focus correctement.
- * Prend en compte les réglages utilisateur : volume personnalisé, répétition (1x, 2x, 3x, 5x, boucle) et vibration.
+ * Prend en compte une file d'attente séquentielle (FIFO) avec pause de 1.5s si plusieurs rappels se déclenchent simultanément.
  */
 @AndroidEntryPoint
 class AudioAlarmService : Service() {
@@ -42,6 +47,16 @@ class AudioAlarmService : Service() {
 
     @Inject
     lateinit var ttsManager: TtsManager
+
+    private data class AlarmRequest(
+        val reminderId: Long,
+        val audioPath: String?,
+        val reminderText: String,
+        val placeName: String?
+    )
+
+    private val alarmQueue = ArrayDeque<AlarmRequest>()
+    private var isProcessingQueue = false
 
     private var mediaPlayer: MediaPlayer? = null
     private lateinit var audioManager: AudioManager
@@ -69,50 +84,89 @@ class AudioAlarmService : Service() {
                 val placeName = intent.getStringExtra(EXTRA_PLACE_NAME)
 
                 if (audioPath == null && reminderText.isBlank()) {
-                    stopSelf()
+                    if (!isProcessingQueue && alarmQueue.isEmpty()) {
+                        stopSelf()
+                    }
                     return START_NOT_STICKY
                 }
 
+                val request = AlarmRequest(
+                    reminderId = reminderId,
+                    audioPath = audioPath,
+                    reminderText = reminderText,
+                    placeName = placeName
+                )
+
+                alarmQueue.add(request)
                 showForegroundNotification(reminderId, reminderText, placeName)
 
-                serviceScope.launch {
+                processQueueIfNeeded()
+            }
+            ACTION_STOP -> {
+                alarmQueue.clear()
+                ttsManager.stop()
+                mediaPlayer?.apply {
+                    if (isPlaying) stop()
+                    release()
+                }
+                mediaPlayer = null
+                stopVibration()
+                stopSelf()
+            }
+        }
+        return START_NOT_STICKY
+    }
+
+    private fun processQueueIfNeeded() {
+        if (isProcessingQueue) return
+        isProcessingQueue = true
+
+        serviceScope.launch {
+            try {
+                while (alarmQueue.isNotEmpty()) {
+                    val currentReq = alarmQueue.removeFirst()
                     val settings = settingsRepository.getSettings()
+
+                    showForegroundNotification(
+                        currentReq.reminderId,
+                        currentReq.reminderText,
+                        currentReq.placeName
+                    )
 
                     if (settings.vibrate) {
                         startVibration()
                     }
 
-                    val shouldAnnouncePlace = settings.announcePlaceByVoice && !placeName.isNullOrBlank()
-                    val shouldReadText = settings.readTextRemindersAloud && audioPath == null
+                    val shouldAnnouncePlace = settings.announcePlaceByVoice && !currentReq.placeName.isNullOrBlank()
+                    val shouldReadText = settings.readTextRemindersAloud && currentReq.audioPath == null
 
                     if (shouldAnnouncePlace || shouldReadText) {
                         val ttsPhrase = when {
-                            audioPath != null && shouldAnnouncePlace -> "Rappel à proximité de $placeName."
-                            audioPath == null && shouldAnnouncePlace -> "Rappel : $reminderText, à proximité de $placeName."
-                            else -> "Rappel : $reminderText."
+                            currentReq.audioPath != null && shouldAnnouncePlace -> "Rappel à proximité de ${currentReq.placeName}."
+                            currentReq.audioPath == null && shouldAnnouncePlace -> "Rappel : ${currentReq.reminderText}, à proximité de ${currentReq.placeName}."
+                            else -> "Rappel : ${currentReq.reminderText}."
                         }
 
                         requestAudioFocus()
-                        ttsManager.speak(ttsPhrase, volume = settings.volume) {
-                            if (audioPath != null) {
-                                playAudio(audioPath, settings)
-                            } else {
-                                stopSelf()
-                            }
-                        }
-                    } else if (audioPath != null) {
-                        playAudio(audioPath, settings)
-                    } else {
-                        stopSelf()
+                        ttsManager.speakAwait(ttsPhrase, volume = settings.volume)
+                    }
+
+                    if (currentReq.audioPath != null) {
+                        playAudioAwait(currentReq.audioPath, settings)
+                    }
+
+                    stopVibration()
+
+                    // S'il reste d'autres rappels dans la file (ex: deux magasins simultanés), insérer un délai de respiration de 1.5s
+                    if (alarmQueue.isNotEmpty()) {
+                        delay(1500L)
                     }
                 }
-            }
-            ACTION_STOP -> {
-                ttsManager.stop()
+            } finally {
+                isProcessingQueue = false
                 stopSelf()
             }
         }
-        return START_NOT_STICKY
     }
 
     // ─── Notification foreground ────────────────────────────────────────────────
@@ -159,60 +213,67 @@ class AudioAlarmService : Service() {
         }
     }
 
-    // ─── Lecture audio ──────────────────────────────────────────────────────────
+    // ─── Lecture audio suspendue ────────────────────────────────────────────────
 
-    private fun playAudio(filePath: String, settings: VoiceAlarmSettings) {
+    private suspend fun playAudioAwait(filePath: String, settings: VoiceAlarmSettings) = withContext(Dispatchers.Main) {
         val file = File(filePath)
-        if (!file.exists()) {
-            stopSelf()
-            return
-        }
+        if (!file.exists()) return@withContext
 
-        try {
-            requestAudioFocus()
+        suspendCancellableCoroutine { continuation ->
+            try {
+                requestAudioFocus()
 
-            if (settings.vibrate) {
-                startVibration()
-            }
+                val alarmAudioAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)          // Bypasse "Ne pas déranger"
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
 
-            val alarmAudioAttributes = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM)          // Bypasse "Ne pas déranger"
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build()
+                targetRepeatCount = settings.repeatCount
+                currentPlayCount = 1
 
-            targetRepeatCount = settings.repeatCount
-            currentPlayCount = 1
+                mediaPlayer?.release()
+                mediaPlayer = MediaPlayer().apply {
+                    setAudioAttributes(alarmAudioAttributes)
+                    setDataSource(filePath)
+                    prepare()
+                    setVolume(settings.volume, settings.volume)
 
-            mediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(alarmAudioAttributes)
-                setDataSource(filePath)
-                prepare()
-                // Appliquer le volume configuré par l'utilisateur
-                setVolume(settings.volume, settings.volume)
-
-                if (targetRepeatCount == VoiceAlarmSettings.REPEAT_LOOP) {
-                    isLooping = true
-                } else {
-                    isLooping = false
-                    setOnCompletionListener { mp ->
-                        if (currentPlayCount < targetRepeatCount) {
-                            currentPlayCount++
-                            try {
-                                mp.seekTo(0)
-                                mp.start()
-                            } catch (e: Exception) {
-                                stopSelf()
+                    if (targetRepeatCount == VoiceAlarmSettings.REPEAT_LOOP) {
+                        isLooping = true
+                    } else {
+                        isLooping = false
+                        setOnCompletionListener { mp ->
+                            if (currentPlayCount < targetRepeatCount) {
+                                currentPlayCount++
+                                try {
+                                    mp.seekTo(0)
+                                    mp.start()
+                                } catch (e: Exception) {
+                                    if (continuation.isActive) continuation.resume(Unit)
+                                }
+                            } else {
+                                if (continuation.isActive) continuation.resume(Unit)
                             }
-                        } else {
-                            stopSelf()
                         }
                     }
+                    setOnErrorListener { _, _, _ ->
+                        if (continuation.isActive) continuation.resume(Unit)
+                        true
+                    }
+                    start()
                 }
-                start()
+
+                continuation.invokeOnCancellation {
+                    mediaPlayer?.apply {
+                        if (isPlaying) stop()
+                        release()
+                    }
+                    mediaPlayer = null
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                if (continuation.isActive) continuation.resume(Unit)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            stopSelf()
         }
     }
 
