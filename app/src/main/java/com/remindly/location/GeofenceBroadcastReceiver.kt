@@ -91,12 +91,47 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
                         // 1b. Interception de la sortie de la zone tampon (Fenêtre Glissante)
                         if (geofence.requestId.endsWith("_exit_zone")) {
+                            if (geofenceTransition != Geofence.GEOFENCE_TRANSITION_EXIT) {
+                                android.util.Log.d("GeofenceReceiver", "Transition non-EXIT ignorée sur exit_zone: $transitionName")
+                                continue
+                            }
+
                             val reminderId = geofence.requestId.substringBefore("_").toLongOrNull() ?: continue
                             if (!handledReminderIds.add(reminderId)) continue
 
+                            val centerLat = prefs.getFloat("exit_center_lat_${reminderId}", Float.NaN)
+                            val centerLng = prefs.getFloat("exit_center_lng_${reminderId}", Float.NaN)
+                            val exitRadiusM = prefs.getFloat("exit_radius_${reminderId}", 2500f)
+
+                            val triggerLoc = geofencingEvent.triggeringLocation
+                            if (triggerLoc != null && !centerLat.isNaN() && !centerLng.isNaN()) {
+                                val results = FloatArray(1)
+                                Location.distanceBetween(
+                                    centerLat.toDouble(),
+                                    centerLng.toDouble(),
+                                    triggerLoc.latitude,
+                                    triggerLoc.longitude,
+                                    results
+                                )
+                                val actualDistanceM = results[0]
+                                val accuracyM = if (triggerLoc.hasAccuracy()) triggerLoc.accuracy else null
+                                val evaluation = GeofenceFilterUtils.evaluateRollingZoneExit(
+                                    actualDistanceM = actualDistanceM,
+                                    exitRadiusM = exitRadiusM,
+                                    accuracyM = accuracyM
+                                )
+
+                                if (!evaluation.isValid) {
+                                    val rejectMsg = "🚫 Sortie de zone tampon rejetée (${evaluation.reason}) pour rappel #$reminderId"
+                                    android.util.Log.w("GeofenceReceiver", rejectMsg)
+                                    appLogger.w("ROLLING_ZONE_REJECTED", rejectMsg, reminderId)
+                                    continue
+                                }
+                            }
+
                             val reminder = reminderRepository.getById(reminderId) ?: continue
                             if (reminder.status == ReminderStatus.ACTIVE) {
-                                val exitMsg = "🚗 Sortie de la zone tampon détectée pour rappel #${reminder.id} ('${reminder.text ?: "Catégorie"}'). Actualisation dynamique des POIs !"
+                                val exitMsg = "🚗 Sortie de la zone tampon validée (${exitRadiusM.toInt()}m) pour rappel #${reminder.id} ('${reminder.text ?: "Catégorie"}'). Actualisation dynamique des POIs !"
                                 android.util.Log.i("GeofenceReceiver", exitMsg)
                                 appLogger.i("ROLLING_ZONE_EXIT", exitMsg, reminderId)
 

@@ -217,7 +217,7 @@ class GeofenceManager @Inject constructor(
                         appLogger.i("POI_DETAIL", poiDetailMsg, reminder.id)
                     }
 
-                    val geofences = places.mapIndexed { index, place ->
+                    val poiGeofences = places.mapIndexed { index, place ->
                         val reqId = "${reminder.id}_geo_${index}"
                         editor.putString("place_name_${reqId}", place.name)
                         editor.putFloat("place_lat_${reqId}", place.latitude.toFloat())
@@ -234,12 +234,20 @@ class GeofenceManager @Inject constructor(
                             .setLoiteringDelay(8000)
                             .setNotificationResponsiveness(3000)
                             .build()
-                    }.toMutableList()
+                    }
+
+                    val allTrackedIds = poiGeofences.map { it.requestId }.toMutableSet()
 
                     // Armement de la Fenêtre Glissante (Rolling Exit Geofence) si recherche autour de position
                     if (searchCenterLat != null && searchCenterLng != null && reminder.categoryRefType != CategoryReferenceType.COMMUTE_ROUTE.id) {
                         val exitReqId = "${reminder.id}_exit_zone"
                         val exitRadiusM = settings.rollingExitRadiusM.toFloat()
+
+                        editor.putFloat("exit_center_lat_${reminder.id}", searchCenterLat.toFloat())
+                        editor.putFloat("exit_center_lng_${reminder.id}", searchCenterLng.toFloat())
+                        editor.putFloat("exit_radius_${reminder.id}", exitRadiusM)
+                        allTrackedIds.add(exitReqId)
+
                         val exitGeofence = Geofence.Builder()
                             .setRequestId(exitReqId)
                             .setCircularRegion(searchCenterLat, searchCenterLng, exitRadiusM)
@@ -248,22 +256,31 @@ class GeofenceManager @Inject constructor(
                             .setNotificationResponsiveness(5000)
                             .build()
 
-                        geofences.add(exitGeofence)
-                        val exitArmedMsg = "Fenêtre glissante armée : Zone tampon de sortie (${exitRadiusM.toInt()}m) autour de (${searchCenterLat}, ${searchCenterLng})"
-                        Log.i(tag, "armCategoryPoIs: $exitArmedMsg")
-                        appLogger.i("ROLLING_ZONE_ARMED", exitArmedMsg, reminder.id)
+                        // Requête dédiée pour l'exit zone avec initialTrigger = 0 pour éviter tout faux déclenchement initial
+                        val exitRequest = GeofencingRequest.Builder()
+                            .setInitialTrigger(0)
+                            .addGeofence(exitGeofence)
+                            .build()
+
+                        geofencingClient.addGeofences(exitRequest, geofencePendingIntent)
+                            .addOnSuccessListener {
+                                val exitArmedMsg = "Fenêtre glissante armée : Zone tampon de sortie (${exitRadiusM.toInt()}m) autour de (${searchCenterLat}, ${searchCenterLng})"
+                                Log.i(tag, "armCategoryPoIs: $exitArmedMsg")
+                                appLogger.i("ROLLING_ZONE_ARMED", exitArmedMsg, reminder.id)
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e(tag, "ÉCHEC armement exit_zone: ${e.message}", e)
+                            }
                     }
 
-                    val requestIds = geofences.map { it.requestId }.toSet()
-                    val currentTracked = prefs.getStringSet("geofences_${reminder.id}", emptySet()) ?: emptySet()
-                    editor.putStringSet("geofences_${reminder.id}", currentTracked + requestIds).apply()
+                    editor.putStringSet("geofences_${reminder.id}", allTrackedIds).apply()
 
-                    val request = GeofencingRequest.Builder()
+                    val poiRequest = GeofencingRequest.Builder()
                         .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER or GeofencingRequest.INITIAL_TRIGGER_DWELL)
-                        .addGeofences(geofences)
+                        .addGeofences(poiGeofences)
                         .build()
 
-                    geofencingClient.addGeofences(request, geofencePendingIntent)
+                    geofencingClient.addGeofences(poiRequest, geofencePendingIntent)
                         .addOnSuccessListener {
                             val successMsg = "${places.size} géofences de POI armées (Rayon: ${detectionRadiusM.toInt()}m, DWELL: 8s, Resp: 3s)"
                             Log.i(tag, "SUCCÈS: $successMsg")
@@ -283,6 +300,13 @@ class GeofenceManager @Inject constructor(
                     if (searchCenterLat != null && searchCenterLng != null && reminder.categoryRefType != CategoryReferenceType.COMMUTE_ROUTE.id) {
                         val exitReqId = "${reminder.id}_exit_zone"
                         val exitRadiusM = settings.rollingExitRadiusM.toFloat()
+
+                        val editor = prefs.edit()
+                        editor.putFloat("exit_center_lat_${reminder.id}", searchCenterLat.toFloat())
+                        editor.putFloat("exit_center_lng_${reminder.id}", searchCenterLng.toFloat())
+                        editor.putFloat("exit_radius_${reminder.id}", exitRadiusM)
+                        editor.putStringSet("geofences_${reminder.id}", setOf(exitReqId)).apply()
+
                         val exitGeofence = Geofence.Builder()
                             .setRequestId(exitReqId)
                             .setCircularRegion(searchCenterLat, searchCenterLng, exitRadiusM)
@@ -290,9 +314,6 @@ class GeofenceManager @Inject constructor(
                             .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_EXIT)
                             .setNotificationResponsiveness(5000)
                             .build()
-
-                        val currentTracked = prefs.getStringSet("geofences_${reminder.id}", emptySet()) ?: emptySet()
-                        prefs.edit().putStringSet("geofences_${reminder.id}", currentTracked + exitReqId).apply()
 
                         val request = GeofencingRequest.Builder()
                             .setInitialTrigger(0)
@@ -389,6 +410,9 @@ class GeofenceManager @Inject constructor(
                     editor.remove("place_lat_$id")
                     editor.remove("place_lng_$id")
                 }
+                editor.remove("exit_center_lat_$reminderId")
+                editor.remove("exit_center_lng_$reminderId")
+                editor.remove("exit_radius_$reminderId")
                 editor.remove("geofences_$reminderId").apply()
             }
             .addOnFailureListener { e ->
@@ -399,6 +423,9 @@ class GeofenceManager @Inject constructor(
                     editor.remove("place_lat_$id")
                     editor.remove("place_lng_$id")
                 }
+                editor.remove("exit_center_lat_$reminderId")
+                editor.remove("exit_center_lng_$reminderId")
+                editor.remove("exit_radius_$reminderId")
                 editor.remove("geofences_$reminderId").apply()
             }
     }

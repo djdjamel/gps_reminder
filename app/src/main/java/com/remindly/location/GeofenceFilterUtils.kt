@@ -117,4 +117,47 @@ object GeofenceFilterUtils {
             angleDiffDegrees = angleDiff
         )
     }
+
+    data class RollingZoneExitResult(
+        val isValid: Boolean,
+        val reason: String,
+        val actualDistanceM: Float? = null,
+        val minRequiredDistanceM: Float? = null
+    )
+
+    /**
+     * Valide qu'un événement EXIT sur la zone tampon correspond à une sortie réelle
+     * et non à un saut GPS erratique.
+     */
+    fun evaluateRollingZoneExit(
+        actualDistanceM: Float?,
+        exitRadiusM: Float,
+        accuracyM: Float?,
+        minDistanceRatio: Float = 0.80f,
+        maxAccuracyM: Float = 70f
+    ): RollingZoneExitResult {
+        if (actualDistanceM != null) {
+            val minRequired = exitRadiusM * minDistanceRatio
+            if (actualDistanceM < minRequired) {
+                return RollingZoneExitResult(
+                    isValid = false,
+                    reason = "Distance réelle insuffisante (${actualDistanceM.toInt()}m < ${minRequired.toInt()}m)",
+                    actualDistanceM = actualDistanceM,
+                    minRequiredDistanceM = minRequired
+                )
+            }
+        }
+        if (accuracyM != null && accuracyM > maxAccuracyM) {
+            return RollingZoneExitResult(
+                isValid = false,
+                reason = "Précision GPS insuffisante (${accuracyM.toInt()}m > ${maxAccuracyM.toInt()}m)",
+                actualDistanceM = actualDistanceM
+            )
+        }
+        return RollingZoneExitResult(
+            isValid = true,
+            reason = "Sortie de zone tampon validée",
+            actualDistanceM = actualDistanceM
+        )
+    }
 }
