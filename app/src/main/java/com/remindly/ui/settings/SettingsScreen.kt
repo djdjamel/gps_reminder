@@ -730,6 +730,106 @@ fun SettingsScreen(
                         }
                     }
                 }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                // F. Filtrage Intelligent de Pertinence (Anti-autoroute & Sens de circulation)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { viewModel.updateSmartGeofenceFiltering(!settings.smartGeofenceFiltering) }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Speed,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                "Filtre intelligent d'accessibilité",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                "Ignore les commerces hors d'atteinte (vitesse de voie rapide/autoroute ou sens opposé)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Switch(
+                        checked = settings.smartGeofenceFiltering,
+                        onCheckedChange = { viewModel.updateSmartGeofenceFiltering(it) }
+                    )
+                }
+
+                if (settings.smartGeofenceFiltering) {
+                    Spacer(Modifier.height(8.dp))
+
+                    // G. Vitesse maximale de déclenchement
+                    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                        Text(
+                            "Vitesse seuil de transit rapide",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            "Au-delà de cette vitesse, les alertes pour commerces de proximité sont filtrées",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+
+                        val speedOptions = listOf(
+                            50 to "50 km/h (Ville)",
+                            65 to "65 km/h (Recommandé)",
+                            80 to "80 km/h (Périurbain)",
+                            90 to "90 km/h"
+                        )
+
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            speedOptions.forEach { (speedKmh, label) ->
+                                val isSelected = settings.maxFilterSpeedKmh == speedKmh
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { viewModel.updateMaxFilterSpeedKmh(speedKmh) },
+                                    label = {
+                                        Text(
+                                            text = label,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    },
+                                    leadingIcon = if (isSelected) {
+                                        {
+                                            Icon(
+                                                Icons.Filled.Check,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    } else null,
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             // ─── Section 3 : Canaux Système ───────────────────────────────────

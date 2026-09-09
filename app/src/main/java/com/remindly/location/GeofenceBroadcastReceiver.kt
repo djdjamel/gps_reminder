@@ -125,26 +125,39 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
                         val placeLat = prefs.getFloat("place_lat_${geofence.requestId}", Float.NaN)
                         val placeLng = prefs.getFloat("place_lng_${geofence.requestId}", Float.NaN)
+                        val targetLat = if (!placeLat.isNaN()) placeLat.toDouble() else reminder.placeLat
+                        val targetLng = if (!placeLng.isNaN()) placeLng.toDouble() else reminder.placeLng
+
+                        val settings = settingsRepository.getSettings()
+
+                        // Validation de Pertinence et d'Accessibilité (Anti-autoroute, Cap de déplacement, Précision GPS)
+                        val triggerLoc = geofencingEvent.triggeringLocation
+                        val relevance = GeofenceFilterUtils.evaluateRelevance(
+                            location = triggerLoc,
+                            poiLat = targetLat,
+                            poiLng = targetLng,
+                            enabled = settings.smartGeofenceFiltering,
+                            maxSpeedKmh = settings.maxFilterSpeedKmh.toFloat(),
+                            maxAccuracyM = 50f,
+                            maxHeadingAngle = 75f
+                        )
+
+                        if (!relevance.isRelevant) {
+                            val filterMsg = "🚫 Alerte filtrée (${relevance.reason}) pour '${detectedPlaceName ?: reminder.placeLabel ?: "Commerce"}'"
+                            android.util.Log.w("GeofenceReceiver", filterMsg)
+                            appLogger.i("GEOFENCE_FILTERED", filterMsg, reminderId)
+                            // On ignore ce déclenchement sans désarmer la géofence (si l'utilisateur ralentit ou prend la bretelle plus tard)
+                            continue
+                        }
 
                         var distInfo = ""
-                        val triggerLoc = geofencingEvent.triggeringLocation
-                        if (triggerLoc != null && !placeLat.isNaN() && !placeLng.isNaN()) {
+                        if (triggerLoc != null && targetLat != null && targetLng != null) {
                             val results = FloatArray(1)
                             Location.distanceBetween(
                                 triggerLoc.latitude,
                                 triggerLoc.longitude,
-                                placeLat.toDouble(),
-                                placeLng.toDouble(),
-                                results
-                            )
-                            distInfo = " | Dist: ${results[0].toInt()}m (±${triggerLoc.accuracy.toInt()}m)"
-                        } else if (triggerLoc != null && reminder.placeLat != null && reminder.placeLng != null) {
-                            val results = FloatArray(1)
-                            Location.distanceBetween(
-                                triggerLoc.latitude,
-                                triggerLoc.longitude,
-                                reminder.placeLat!!,
-                                reminder.placeLng!!,
+                                targetLat,
+                                targetLng,
                                 results
                             )
                             distInfo = " | Dist: ${results[0].toInt()}m (±${triggerLoc.accuracy.toInt()}m)"

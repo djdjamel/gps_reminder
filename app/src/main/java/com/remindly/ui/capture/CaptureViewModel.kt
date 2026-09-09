@@ -38,7 +38,8 @@ data class CaptureUiState(
     val imageUris: List<Uri> = emptyList(),
     val audioPath: String? = null,
     val isRecording: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val voiceFeedbackMessage: String? = null
 )
 
 @HiltViewModel
@@ -58,6 +59,46 @@ class CaptureViewModel @Inject constructor(
 
     fun updateText(newText: String) {
         _uiState.update { it.copy(text = newText) }
+    }
+
+    /**
+     * Traite la transcription vocale en extrayant automatiquement l'action et la catégorie de lieu.
+     */
+    fun onVoiceTranscribed(rawText: String) {
+        if (rawText.isBlank()) return
+        val parsed = com.remindly.util.VoiceIntentParser.parse(rawText)
+
+        _uiState.update { current ->
+            val newText = if (current.text.isBlank()) {
+                parsed.cleanedReminderText
+            } else {
+                "${current.text} - ${parsed.cleanedReminderText}"
+            }
+
+            var updatedCategory = current.placeCategory
+            var updatedLabel = current.placeLabel
+            var feedback: String? = null
+
+            if (parsed.detectedCategory != null) {
+                updatedCategory = parsed.detectedCategory.id
+                updatedLabel = parsed.detectedCategory.displayName
+                feedback = "Catégorie détectée : ${parsed.detectedCategory.displayName}"
+                appLogger.i("VOICE_INTENT", "Voix analysée: '$rawText' -> Catégorie: ${parsed.detectedCategory.name}")
+            } else {
+                feedback = "Texte dicté ajouté"
+            }
+
+            current.copy(
+                text = newText,
+                placeCategory = updatedCategory,
+                placeLabel = updatedLabel,
+                voiceFeedbackMessage = feedback
+            )
+        }
+    }
+
+    fun clearVoiceFeedback() {
+        _uiState.update { it.copy(voiceFeedbackMessage = null) }
     }
 
     fun setTriggerTime(millis: Long) {

@@ -29,6 +29,8 @@ interface VoiceAlarmSettingsRepository {
     suspend fun setPoiDetectionRadiusM(radiusM: Int)
     suspend fun setRollingExitRadiusM(radiusM: Int)
     suspend fun setGeofenceCooldownSeconds(seconds: Int)
+    suspend fun setSmartGeofenceFiltering(enabled: Boolean)
+    suspend fun setMaxFilterSpeedKmh(speedKmh: Int)
     suspend fun setAnnouncePlaceByVoice(enabled: Boolean)
     suspend fun setReadTextRemindersAloud(enabled: Boolean)
     suspend fun setCommuteStart(lat: Double, lng: Double, label: String)
@@ -57,6 +59,8 @@ class VoiceAlarmSettingsRepositoryImpl(
         val KEY_POI_DETECTION_RADIUS_M = intPreferencesKey("poi_detection_radius_m")
         val KEY_ROLLING_EXIT_RADIUS_M = intPreferencesKey("rolling_exit_radius_m")
         val KEY_GEOFENCE_COOLDOWN_SECONDS = intPreferencesKey("geofence_cooldown_seconds")
+        val KEY_SMART_GEOFENCE_FILTERING = booleanPreferencesKey("smart_geofence_filtering")
+        val KEY_MAX_FILTER_SPEED_KMH = intPreferencesKey("max_filter_speed_kmh")
         val KEY_ANNOUNCE_PLACE_BY_VOICE = booleanPreferencesKey("announce_place_by_voice")
         val KEY_READ_TEXT_REMINDERS_ALOUD = booleanPreferencesKey("read_text_reminders_aloud")
         
@@ -89,6 +93,8 @@ class VoiceAlarmSettingsRepositoryImpl(
                 readTextRemindersAloud = preferences[PreferencesKeys.KEY_READ_TEXT_REMINDERS_ALOUD] ?: true,
                 rollingExitRadiusM = preferences[PreferencesKeys.KEY_ROLLING_EXIT_RADIUS_M] ?: 2500,
                 geofenceCooldownSeconds = preferences[PreferencesKeys.KEY_GEOFENCE_COOLDOWN_SECONDS] ?: 15,
+                smartGeofenceFiltering = preferences[PreferencesKeys.KEY_SMART_GEOFENCE_FILTERING] ?: true,
+                maxFilterSpeedKmh = preferences[PreferencesKeys.KEY_MAX_FILTER_SPEED_KMH] ?: 65,
                 commuteStartLat = preferences[PreferencesKeys.KEY_COMMUTE_START_LAT],
                 commuteStartLng = preferences[PreferencesKeys.KEY_COMMUTE_START_LNG],
                 commuteStartLabel = preferences[PreferencesKeys.KEY_COMMUTE_START_LABEL],
@@ -142,6 +148,18 @@ class VoiceAlarmSettingsRepositoryImpl(
     override suspend fun setGeofenceCooldownSeconds(seconds: Int) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.KEY_GEOFENCE_COOLDOWN_SECONDS] = seconds.coerceIn(5, 300)
+        }
+    }
+
+    override suspend fun setSmartGeofenceFiltering(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.KEY_SMART_GEOFENCE_FILTERING] = enabled
+        }
+    }
+
+    override suspend fun setMaxFilterSpeedKmh(speedKmh: Int) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.KEY_MAX_FILTER_SPEED_KMH] = speedKmh.coerceIn(30, 130)
         }
     }
 

@@ -16,6 +16,10 @@ data class VoiceAlarmSettings(
     val rollingExitRadiusM: Int = 2500,
     // Délai anti-rebond entre alertes successives pour le même rappel en secondes (défaut : 15s)
     val geofenceCooldownSeconds: Int = 15,
+    // Filtrage intelligent de pertinence des géofences (Vitesse de transit autoroute + Direction/Cap)
+    val smartGeofenceFiltering: Boolean = true,
+    // Vitesse maximale autorisée en km/h pour déclencher un rappel POI (défaut : 65 km/h)
+    val maxFilterSpeedKmh: Int = 65,
     // Trajet habituel
     val commuteStartLat: Double? = null,
     val commuteStartLng: Double? = null,

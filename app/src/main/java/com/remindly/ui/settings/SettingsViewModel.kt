@@ -85,6 +85,18 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateSmartGeofenceFiltering(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setSmartGeofenceFiltering(enabled)
+        }
+    }
+
+    fun updateMaxFilterSpeedKmh(speedKmh: Int) {
+        viewModelScope.launch {
+            settingsRepository.setMaxFilterSpeedKmh(speedKmh)
+        }
+    }
+
     fun updateAnnouncePlaceByVoice(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.setAnnouncePlaceByVoice(enabled)

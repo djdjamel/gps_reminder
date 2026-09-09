@@ -2,7 +2,10 @@ package com.remindly.ui.capture
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.content.Intent
 import android.net.Uri
+import android.speech.RecognizerIntent
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,6 +25,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -58,6 +62,33 @@ fun QuickCaptureSheet(
                     onDismissRequest()
                 }
             }
+        }
+    }
+
+    // Launcher pour la reconnaissance vocale multilingue
+    val speechRecognitionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+        onResult = { result ->
+            if (result.resultCode == android.app.Activity.RESULT_OK) {
+                val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                if (!matches.isNullOrEmpty()) {
+                    viewModel.onVoiceTranscribed(matches[0])
+                }
+            }
+        }
+    )
+
+    val launchSpeechRecognition = {
+        try {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "Dictez votre rappel (ex: Acheter du pain à la boulangerie)...")
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            }
+            speechRecognitionLauncher.launch(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Reconnaissance vocale non disponible", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -98,17 +129,70 @@ fun QuickCaptureSheet(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Champ de texte
+            // Champ de texte avec bouton micro intégré
             OutlinedTextField(
                 value = uiState.text,
                 onValueChange = viewModel::updateText,
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester),
-                placeholder = { Text("Se rappeler de…") },
+                placeholder = { Text("Se rappeler de… ou appuyez sur le micro") },
+                trailingIcon = {
+                    IconButton(
+                        onClick = launchSpeechRecognition,
+                        modifier = Modifier.padding(end = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Mic,
+                            contentDescription = "Dictée vocale rapide",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                },
                 singleLine = false,
                 maxLines = 5
             )
+
+            // Bannière de feedback de détection vocale
+            if (uiState.voiceFeedbackMessage != null) {
+                Spacer(Modifier.height(6.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = uiState.voiceFeedbackMessage!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = { viewModel.clearVoiceFeedback() },
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = "Fermer",
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
+            }
 
             Spacer(Modifier.height(12.dp))
 
