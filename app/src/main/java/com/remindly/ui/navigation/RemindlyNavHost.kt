@@ -16,8 +16,8 @@ import com.remindly.ui.capture.QuickCaptureSheet
 import com.remindly.ui.detail.DetailViewModel
 import com.remindly.ui.detail.ReminderDetailScreen
 import com.remindly.ui.home.HomeScreen
+import com.remindly.ui.logs.LogsScreen
 import com.remindly.ui.settings.SettingsScreen
-import javax.inject.Inject
 
 @Composable
 fun RemindlyNavHost(
@@ -30,12 +30,12 @@ fun RemindlyNavHost(
     LaunchedEffect(currentUser) {
         if (currentUser == null) {
             navController.navigate(Routes.Login.route) {
-                popUpTo(0) { inclusive = true } // vide tout le backstack
+                popUpTo(0) { inclusive = true }
                 launchSingleTop = true
             }
         } else {
             navController.navigate(Routes.Home.route) {
-                popUpTo(0) { inclusive = true } // vide tout le backstack
+                popUpTo(0) { inclusive = true }
                 launchSingleTop = true
             }
         }
@@ -43,7 +43,7 @@ fun RemindlyNavHost(
 
     NavHost(
         navController = navController,
-        startDestination = Routes.Login.route // toujours Login au départ
+        startDestination = Routes.Login.route
     ) {
         composable(Routes.Login.route) {
             LoginScreen()
@@ -176,12 +176,23 @@ fun RemindlyNavHost(
                 },
                 onNavigateToCommuteRoute = {
                     navController.navigate(Routes.CommuteRoute.route)
+                },
+                onNavigateToLogs = {
+                    navController.navigate(Routes.Logs.route)
                 }
             )
         }
 
         composable(Routes.CommuteRoute.route) {
             com.remindly.ui.settings.CommuteRouteScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Routes.Logs.route) {
+            LogsScreen(
                 onNavigateBack = {
                     navController.popBackStack()
                 }

@@ -26,6 +26,8 @@ interface VoiceAlarmSettingsRepository {
     suspend fun setRepeatCount(repeatCount: Int)
     suspend fun setVibrate(vibrate: Boolean)
     suspend fun setPoiSearchRadius(radiusKm: Int)
+    suspend fun setPoiDetectionRadiusM(radiusM: Int)
+    suspend fun setRollingExitRadiusM(radiusM: Int)
     suspend fun setCommuteStart(lat: Double, lng: Double, label: String)
     suspend fun setCommuteEnd(lat: Double, lng: Double, label: String)
     suspend fun setCommuteRoute(
@@ -49,6 +51,8 @@ class VoiceAlarmSettingsRepositoryImpl(
         val KEY_REPEAT_COUNT = intPreferencesKey("voice_repeat_count")
         val KEY_VIBRATE = booleanPreferencesKey("voice_vibrate")
         val KEY_POI_RADIUS = intPreferencesKey("poi_search_radius_km")
+        val KEY_POI_DETECTION_RADIUS_M = intPreferencesKey("poi_detection_radius_m")
+        val KEY_ROLLING_EXIT_RADIUS_M = intPreferencesKey("rolling_exit_radius_m")
         
         // Trajet habituel
         val KEY_COMMUTE_START_LAT = doublePreferencesKey("commute_start_lat")
@@ -74,6 +78,8 @@ class VoiceAlarmSettingsRepositoryImpl(
                 repeatCount = preferences[PreferencesKeys.KEY_REPEAT_COUNT] ?: 1,
                 vibrate = preferences[PreferencesKeys.KEY_VIBRATE] ?: true,
                 poiSearchRadiusKm = preferences[PreferencesKeys.KEY_POI_RADIUS] ?: 3,
+                poiDetectionRadiusM = preferences[PreferencesKeys.KEY_POI_DETECTION_RADIUS_M] ?: 450,
+                rollingExitRadiusM = preferences[PreferencesKeys.KEY_ROLLING_EXIT_RADIUS_M] ?: 2500,
                 commuteStartLat = preferences[PreferencesKeys.KEY_COMMUTE_START_LAT],
                 commuteStartLng = preferences[PreferencesKeys.KEY_COMMUTE_START_LNG],
                 commuteStartLabel = preferences[PreferencesKeys.KEY_COMMUTE_START_LABEL],
@@ -109,6 +115,18 @@ class VoiceAlarmSettingsRepositoryImpl(
     override suspend fun setPoiSearchRadius(radiusKm: Int) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.KEY_POI_RADIUS] = radiusKm.coerceIn(1, 10)
+        }
+    }
+
+    override suspend fun setPoiDetectionRadiusM(radiusM: Int) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.KEY_POI_DETECTION_RADIUS_M] = radiusM.coerceIn(150, 2000)
+        }
+    }
+
+    override suspend fun setRollingExitRadiusM(radiusM: Int) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.KEY_ROLLING_EXIT_RADIUS_M] = radiusM.coerceIn(1000, 10000)
         }
     }
 

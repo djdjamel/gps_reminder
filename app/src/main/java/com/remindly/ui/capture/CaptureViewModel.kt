@@ -47,6 +47,7 @@ class CaptureViewModel @Inject constructor(
     private val attachmentStore: AttachmentStore,
     private val alarmScheduler: AlarmScheduler,
     private val geofenceManager: GeofenceManager,
+    private val appLogger: com.remindly.util.AppLogger,
     @ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
@@ -155,7 +156,7 @@ class CaptureViewModel @Inject constructor(
                 triggerTimeMillis = state.triggerTimeMillis,
                 placeLat = state.placeLat,
                 placeLng = state.placeLng,
-                placeRadiusM = if (state.placeLat != null) 250f else null,
+                placeRadiusM = if (state.placeLat != null) 450f else null,
                 placeLabel = state.placeLabel,
                 placeCategory = state.placeCategory,
                 categoryRefType = state.categoryRefType,
@@ -164,6 +165,11 @@ class CaptureViewModel @Inject constructor(
             
             try {
                 val reminderId = reminderRepository.save(reminder)
+                appLogger.i(
+                    "CREATION",
+                    "Rappel créé: '${reminder.text ?: "Sans texte"}' (Type: ${reminder.triggerType}, Catégorie: ${reminder.placeCategory ?: "Aucune"}, Lieu: ${reminder.placeLabel ?: "Non défini"})",
+                    reminderId
+                )
 
                 // En espace collaborateur, save() écrit sur Firestore et renvoie 0 :
                 // pas de ligne Room locale, donc pas de pièces jointes (non synchronisées sur Spark).

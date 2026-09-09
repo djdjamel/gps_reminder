@@ -69,11 +69,7 @@ class AlarmReceiver : BroadcastReceiver() {
                     notifier.showTimeReminder(reminder)
                 }
 
-                // 2. Si le rappel n'attend pas encore un lieu (trigger TIME pur), marquer COMPLETED
-                if (reminder.triggerType == com.remindly.domain.model.TriggerType.TIME) {
-                    reminderRepository.setStatus(reminderId, ReminderStatus.COMPLETED)
-                }
-
+                // Notification affichée / alarme jouée - le rappel reste actif jusqu'à action de l'utilisateur
             } finally {
                 pendingResult.finish()
             }

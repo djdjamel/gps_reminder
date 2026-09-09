@@ -124,6 +124,7 @@ class PlacePickerViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val location = fusedLocationClient.lastLocation.await()
+                    ?: fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await()
                 if (location != null) {
                     _currentLocation.value = LatLng(location.latitude, location.longitude)
                 }

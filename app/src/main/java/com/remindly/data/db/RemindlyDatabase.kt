@@ -6,11 +6,13 @@ import androidx.room.TypeConverters
 import com.remindly.data.db.dao.AttachmentDao
 import com.remindly.data.db.dao.CollaboratorDao
 import com.remindly.data.db.dao.ReminderDao
+import com.remindly.data.db.dao.ReminderLogDao
 import com.remindly.data.db.dao.SavedPlaceDao
 import com.remindly.data.db.dao.SharedListDao
 import com.remindly.data.db.entity.CollaboratorEntity
 import com.remindly.data.db.entity.ReminderAttachmentEntity
 import com.remindly.data.db.entity.ReminderEntity
+import com.remindly.data.db.entity.ReminderLogEntity
 import com.remindly.data.db.entity.SavedPlaceEntity
 import com.remindly.data.db.entity.SharedListEntity
 
@@ -20,9 +22,10 @@ import com.remindly.data.db.entity.SharedListEntity
         ReminderAttachmentEntity::class,
         SavedPlaceEntity::class,
         SharedListEntity::class,
-        CollaboratorEntity::class
+        CollaboratorEntity::class,
+        ReminderLogEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -32,4 +35,5 @@ abstract class RemindlyDatabase : RoomDatabase() {
     abstract fun savedPlaceDao(): SavedPlaceDao
     abstract fun sharedListDao(): SharedListDao
     abstract fun collaboratorDao(): CollaboratorDao
+    abstract fun reminderLogDao(): ReminderLogDao
 }

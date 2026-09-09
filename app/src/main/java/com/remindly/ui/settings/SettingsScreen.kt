@@ -39,6 +39,7 @@ import kotlin.math.roundToInt
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToCommuteRoute: () -> Unit = {},
+    onNavigateToLogs: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -365,7 +366,78 @@ fun SettingsScreen(
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-                // B. Rayon de détection POI
+                // B. Rayon de détection de chaque commerce (Geofence)
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Radar,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                "Rayon de détection des commerces",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                "Taille de la zone circulaire autour de chaque commerce (POIs)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    val detectionRadiusOptions = listOf(
+                        250 to "250 m (Piéton)",
+                        350 to "350 m",
+                        450 to "450 m (Recommandé / Voiture)",
+                        600 to "600 m",
+                        800 to "800 m",
+                        1000 to "1 km"
+                    )
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        detectionRadiusOptions.forEach { (radiusM, label) ->
+                            val isSelected = settings.poiDetectionRadiusM == radiusM
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.updatePoiDetectionRadiusM(radiusM) },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                leadingIcon = if (isSelected) {
+                                    {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null,
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                // C. Rayon de recherche globale POI
                 Column(modifier = Modifier.padding(vertical = 4.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -380,12 +452,12 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Column {
                             Text(
-                                "Périmètre de recherche POI",
+                                "Périmètre de recherche globale POI",
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "Rayon maximal autour de vous pour trouver les commerces",
+                                "Rayon maximal autour de vous pour trouver les commerces sur Google Places",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -412,6 +484,75 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = isSelected,
                                 onClick = { viewModel.updatePoiRadius(radiusKm) },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                leadingIcon = if (isSelected) {
+                                    {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null,
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                // D. Fenêtre Glissante (Zone tampon de sortie)
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Route,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                "Zone tampon de sortie (Fenêtre glissante)",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                "Distance parcourue en voiture avant d'actualiser automatiquement les commerces devant vous",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    val rollingExitOptions = listOf(
+                        1500 to "1.5 km (Piéton / Vélo)",
+                        2500 to "2.5 km (Recommandé / Voiture)",
+                        3500 to "3.5 km (Périurbain)",
+                        5000 to "5.0 km (Voie rapide)"
+                    )
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rollingExitOptions.forEach { (radiusM, label) ->
+                            val isSelected = settings.rollingExitRadiusM == radiusM
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.updateRollingExitRadiusM(radiusM) },
                                 label = {
                                     Text(
                                         text = label,
@@ -470,7 +611,22 @@ fun SettingsScreen(
                 )
             }
 
-            // ─── Section 4 : Compte ───────────────────────────────────────────
+            // ─── Section 4 : Diagnostic & Logs ───────────────────────────────
+            SettingsCard(
+                title = "Diagnostic & Journal (Logs)",
+                subtitle = "Historique technique et traçabilité du cycle de vie des rappels",
+                icon = Icons.Filled.BugReport,
+                iconColor = MaterialTheme.colorScheme.tertiary
+            ) {
+                SettingsActionRow(
+                    title = "Voir le journal des événements (Logs)",
+                    subtitle = "Consulter les étapes de création, POIs, armements et déclenchements",
+                    icon = Icons.Filled.History,
+                    onClick = onNavigateToLogs
+                )
+            }
+
+            // ─── Section 5 : Compte ───────────────────────────────────────────
             SettingsCard(
                 title = "Compte & Session",
                 subtitle = "Gestion de votre profil Remindly",

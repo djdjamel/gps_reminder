@@ -45,6 +45,7 @@ class DetailViewModel @Inject constructor(
     private val attachmentStore: AttachmentStore,
     private val alarmScheduler: AlarmScheduler,
     private val geofenceManager: GeofenceManager,
+    private val appLogger: com.remindly.util.AppLogger,
     savedStateHandle: SavedStateHandle,
     @ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
@@ -175,13 +176,18 @@ class DetailViewModel @Inject constructor(
                 triggerTimeMillis = state.triggerTimeMillis,
                 placeLat = state.placeLat,
                 placeLng = state.placeLng,
-                placeRadiusM = if (state.placeLat != null) 250f else null,
+                placeRadiusM = if (state.placeLat != null) (state.reminder?.placeRadiusM ?: 450f) else null,
                 placeLabel = state.placeLabel,
                 placeCategory = state.placeCategory,
                 categoryRefType = state.categoryRefType,
                 commuteDirection = state.commuteDirection
             )
             val savedId = reminderRepository.save(reminder)
+            appLogger.i(
+                "UPDATE",
+                "Rappel mis à jour: '${reminder.text}' (Type: ${reminder.triggerType}, Catégorie: ${reminder.placeCategory ?: "Aucune"}, Lieu: ${reminder.placeLabel ?: "Non défini"})",
+                savedId
+            )
             
             // Gérer l'alarme
             if (reminder.triggerType == TriggerType.TIME || reminder.triggerType == TriggerType.BOTH) {

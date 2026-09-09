@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" width="100%" height="100%" style="background-color: #121214; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E1F24"/>
+      <stop offset="100%" stop-color="#18191D"/>
+    </linearGradient>
+    <linearGradient id="primaryGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF7A30"/>
+      <stop offset="100%" stop-color="#E05305"/>
+    </linearGradient>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#6D28D9"/>
+    </linearGradient>
+
+    <!-- Filters for shadow -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+
+    <!-- Arrow Marker -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#FF7A30"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#3B82F6"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#10B981"/>
+    </marker>
+  </defs>
+
+  <!-- Title Header -->
+  <g transform="translate(60, 40)">
+    <rect width="60" height="60" rx="14" fill="url(#primaryGrad)" filter="url(#shadow)"/>
+    <text x="30" y="38" font-size="28" text-anchor="middle" fill="#FFFFFF">📍</text>
+    <text x="76" y="32" font-size="24" font-weight="bold" fill="#FFFFFF">Workflow du Rappel Géographique (Lieu Fixe &amp; Catégorie)</text>
+    <text x="76" y="52" font-size="14" fill="#9CA3AF">De la création à la notification : cycle complet de surveillance et de déclenchement</text>
+  </g>
+
+  <!-- Step 1: Création du Rappel -->
+  <g transform="translate(60, 130)" filter="url(#shadow)">
+    <rect width="320" height="200" rx="16" fill="url(#cardGrad)" stroke="#2E3038" stroke-width="1.5"/>
+    <rect x="16" y="16" width="36" height="36" rx="10" fill="url(#primaryGrad)"/>
+    <text x="34" y="40" font-size="16" font-weight="bold" text-anchor="middle" fill="#FFFFFF">1</text>
+    <text x="64" y="40" font-size="16" font-weight="bold" fill="#FFFFFF">Création dans l'App</text>
+    
+    <text x="20" y="80" font-size="13" fill="#D1D5DB">• Choix : Lieu fixe ou Catégorie (ex: Supérette)</text>
+    <text x="20" y="105" font-size="13" fill="#D1D5DB">• Définition du rayon (Défaut : 450m)</text>
+    <text x="20" y="130" font-size="13" fill="#D1D5DB">• Sauvegarde Room DB locale</text>
+    <text x="20" y="155" font-size="13" fill="#10B981" font-weight="600">➔ Log : AppLogger("Rappel créé")</text>
+  </g>
+
+  <!-- Step 1 to Step 2 Connector -->
+  <path d="M 380 230 L 440 230" stroke="#FF7A30" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Step 2: Recherche Places & Résolution -->
+  <g transform="translate(440, 130)" filter="url(#shadow)">
+    <rect width="320" height="200" rx="16" fill="url(#cardGrad)" stroke="#2E3038" stroke-width="1.5"/>
+    <rect x="16" y="16" width="36" height="36" rx="10" fill="url(#blueGrad)"/>
+    <text x="34" y="40" font-size="16" font-weight="bold" text-anchor="middle" fill="#FFFFFF">2</text>
+    <text x="64" y="40" font-size="16" font-weight="bold" fill="#FFFFFF">Recherche &amp; Résolution</text>
+    
+    <text x="20" y="80" font-size="13" fill="#D1D5DB">• Si Catégorie : Google Places API</text>
+    <text x="20" y="105" font-size="13" fill="#D1D5DB">• Récupération des POIs les plus proches</text>
+    <text x="20" y="130" font-size="13" fill="#D1D5DB">• Si Trajet : POIs le long de la polyline</text>
+    <text x="20" y="155" font-size="13" fill="#10B981" font-weight="600">➔ Log : AppLogger("X POIs trouvés")</text>
+  </g>
+
+  <!-- Step 2 to Step 3 Connector -->
+  <path d="M 760 230 L 820 230" stroke="#3B82F6" stroke-width="2.5" fill="none" marker-end="url(#arrowBlue)"/>
+
+  <!-- Step 3: Armement Geofencing Play Services -->
+  <g transform="translate(820, 130)" filter="url(#shadow)">
+    <rect width="320" height="200" rx="16" fill="url(#cardGrad)" stroke="#2E3038" stroke-width="1.5"/>
+    <rect x="16" y="16" width="36" height="36" rx="10" fill="url(#purpleGrad)"/>
+    <text x="34" y="40" font-size="16" font-weight="bold" text-anchor="middle" fill="#FFFFFF">3</text>
+    <text x="64" y="40" font-size="16" font-weight="bold" fill="#FFFFFF">Armement Geofencing</text>
+    
+    <text x="20" y="80" font-size="13" fill="#D1D5DB">• GeofencingClient.addGeofences()</text>
+    <text x="20" y="105" font-size="13" fill="#D1D5DB">• Rayon circulaire = 450 m</text>
+    <text x="20" y="130" font-size="13" fill="#D1D5DB">• Transitions : ENTER + DWELL (8s)</text>
+    <text x="20" y="155" font-size="13" fill="#10B981" font-weight="600">➔ Log : AppLogger("Geofences actives")</text>
+  </g>
+
+  <!-- Step 3 down to Step 4 Connector -->
+  <path d="M 980 330 L 980 390 L 980 440" stroke="#8B5CF6" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Step 4: Surveillance Système Android & Play Services -->
+  <g transform="translate(820, 440)" filter="url(#shadow)">
+    <rect width="320" height="200" rx="16" fill="url(#cardGrad)" stroke="#2E3038" stroke-width="1.5"/>
+    <rect x="16" y="16" width="36" height="36" rx="10" fill="url(#primaryGrad)"/>
+    <text x="34" y="40" font-size="16" font-weight="bold" text-anchor="middle" fill="#FFFFFF">4</text>
+    <text x="64" y="40" font-size="16" font-weight="bold" fill="#FFFFFF">Surveillance Matérielle</text>
+    
+    <text x="20" y="80" font-size="13" fill="#D1D5DB">• Géré par Google Play Services</text>
+    <text x="20" y="105" font-size="13" fill="#D1D5DB">• Scans passifs (Wi-Fi, Cellulaire, GPS)</text>
+    <text x="20" y="130" font-size="13" fill="#D1D5DB">• Détection entrée dans zone (450m)</text>
+    <text x="20" y="155" font-size="13" fill="#D1D5DB">• Réactivité système : 3000 ms</text>
+  </g>
+
+  <!-- Step 4 left to Step 5 Connector -->
+  <path d="M 820 540 L 760 540" stroke="#FF7A30" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Step 5: BroadcastReceiver & Déclenchement -->
+  <g transform="translate(440, 440)" filter="url(#shadow)">
+    <rect width="320" height="200" rx="16" fill="url(#cardGrad)" stroke="#2E3038" stroke-width="1.5"/>
+    <rect x="16" y="16" width="36" height="36" rx="10" fill="url(#blueGrad)"/>
+    <text x="34" y="40" font-size="16" font-weight="bold" text-anchor="middle" fill="#FFFFFF">5</text>
+    <text x="64" y="40" font-size="16" font-weight="bold" fill="#FFFFFF">Réception Broadcast</text>
+    
+    <text x="20" y="80" font-size="13" fill="#D1D5DB">• GeofenceBroadcastReceiver.onReceive</text>
+    <text x="20" y="105" font-size="13" fill="#D1D5DB">• Récupération du lieu dans SharedPreferences</text>
+    <text x="20" y="130" font-size="13" fill="#D1D5DB">• Mise à jour statut Room : COMPLETED</text>
+    <text x="20" y="155" font-size="13" fill="#10B981" font-weight="600">➔ Log : AppLogger("Déclenché sur POI")</text>
+  </g>
+
+  <!-- Step 5 left to Step 6 Connector -->
+  <path d="M 440 540 L 380 540" stroke="#3B82F6" stroke-width="2.5" fill="none" marker-end="url(#arrowGreen)"/>
+
+  <!-- Step 6: Alarme Vocale & Notification -->
+  <g transform="translate(60, 440)" filter="url(#shadow)">
+    <rect width="320" height="200" rx="16" fill="url(#cardGrad)" stroke="#2E3038" stroke-width="1.5"/>
+    <rect x="16" y="16" width="36" height="36" rx="10" fill="url(#greenGrad)"/>
+    <text x="34" y="40" font-size="16" font-weight="bold" text-anchor="middle" fill="#FFFFFF">6</text>
+    <text x="64" y="40" font-size="16" font-weight="bold" fill="#FFFFFF">Notification &amp; Alerte</text>
+    
+    <text x="20" y="80" font-size="13" fill="#D1D5DB">• AudioAlarmService (priorité alarme USAGE_ALARM)</text>
+    <text x="20" y="105" font-size="13" fill="#D1D5DB">• Notification ReminderNotifier avec nom du lieu</text>
+    <text x="20" y="130" font-size="13" fill="#D1D5DB">• Suppression propre des géofences associées</text>
+    <text x="20" y="155" font-size="13" fill="#10B981" font-weight="600">➔ Log : AppLogger("Notification envoyée")</text>
+  </g>
+
+  <!-- Bottom Diagnostic & Logger Summary Card -->
+  <g transform="translate(60, 680)" filter="url(#shadow)">
+    <rect width="1080" height="150" rx="16" fill="#1A1B20" stroke="#FF7A30" stroke-width="1" stroke-dasharray="6,6"/>
+    <text x="30" y="40" font-size="18" font-weight="bold" fill="#FF7A30">📋 Système de Journalisation Intégré (In-App Logger)</text>
+    <text x="30" y="70" font-size="13" fill="#9CA3AF">Chaque étape du cycle de vie est enregistrée de manière persistante dans la base de données Room (ReminderLogEntity).</text>
+    <text x="30" y="95" font-size="13" fill="#9CA3AF">Vous pouvez consulter en direct l'historique complet, les POIs trouvés, le rayon appliqué et les transitions captées depuis l'écran Diagnostic &amp; Logs.</text>
+    <rect x="30" y="112" width="130" height="24" rx="6" fill="#10B981" fill-opacity="0.15"/>
+    <text x="95" y="128" font-size="11" font-weight="bold" text-anchor="middle" fill="#10B981">✓ PERSISTANT</text>
+    <rect x="170" y="112" width="130" height="24" rx="6" fill="#3B82F6" fill-opacity="0.15"/>
+    <text x="235" y="128" font-size="11" font-weight="bold" text-anchor="middle" fill="#3B82F6">✓ TEMPS RÉEL</text>
+    <rect x="310" y="112" width="150" height="24" rx="6" fill="#FF7A30" fill-opacity="0.15"/>
+    <text x="385" y="128" font-size="11" font-weight="bold" text-anchor="middle" fill="#FF7A30">✓ TRACE COMPLÈTE</text>
+  </g>
+</svg>

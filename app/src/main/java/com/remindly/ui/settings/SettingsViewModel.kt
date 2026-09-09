@@ -67,6 +67,18 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updatePoiDetectionRadiusM(radiusM: Int) {
+        viewModelScope.launch {
+            settingsRepository.setPoiDetectionRadiusM(radiusM)
+        }
+    }
+
+    fun updateRollingExitRadiusM(radiusM: Int) {
+        viewModelScope.launch {
+            settingsRepository.setRollingExitRadiusM(radiusM)
+        }
+    }
+
     fun setCommuteStart(lat: Double, lng: Double, label: String) {
         viewModelScope.launch {
             settingsRepository.setCommuteStart(lat, lng, label)

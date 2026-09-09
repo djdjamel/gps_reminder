@@ -141,7 +141,7 @@ class SharedReminderSyncManager @Inject constructor(
             }
         }
         if (e.triggerType == TriggerType.PLACE || e.triggerType == TriggerType.BOTH) {
-            if (e.placeLat != null && e.placeLng != null) {
+            if ((e.placeLat != null && e.placeLng != null) || e.placeCategory != null) {
                 geofenceManager.addGeofence(domain)
             }
         }
@@ -159,6 +159,9 @@ class SharedReminderSyncManager @Inject constructor(
         placeLng = placeLng,
         placeRadiusM = placeRadiusM,
         placeLabel = placeLabel,
+        placeCategory = placeCategory,
+        categoryRefType = categoryRefType,
+        commuteDirection = commuteDirection,
         authorId = authorId,
         authorName = authorName,
         remoteId = remoteId

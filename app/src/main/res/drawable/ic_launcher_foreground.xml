@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Outer soundwaves / radar rings -->
+    <path
+        android:strokeWidth="2.5"
+        android:strokeColor="#06B6D4"
+        android:strokeAlpha="0.75"
+        android:strokeLineCap="round"
+        android:pathData="M 28,45 C 25,50 25,56 28,61" />
+    <path
+        android:strokeWidth="2"
+        android:strokeColor="#818CF8"
+        android:strokeAlpha="0.5"
+        android:strokeLineCap="round"
+        android:pathData="M 22,40 C 18,48 18,58 22,66" />
+    <path
+        android:strokeWidth="2.5"
+        android:strokeColor="#06B6D4"
+        android:strokeAlpha="0.75"
+        android:strokeLineCap="round"
+        android:pathData="M 80,45 C 83,50 83,56 80,61" />
+    <path
+        android:strokeWidth="2"
+        android:strokeColor="#818CF8"
+        android:strokeAlpha="0.5"
+        android:strokeLineCap="round"
+        android:pathData="M 86,40 C 90,48 90,58 86,66" />
+
+    <!-- Radar ground pulse circle under pin -->
+    <path
+        android:strokeWidth="2"
+        android:strokeColor="#06B6D4"
+        android:strokeAlpha="0.8"
+        android:pathData="M 38,78 A 16,5 0 1,0 70,78 A 16,5 0 1,0 38,78" />
+    <path
+        android:strokeWidth="1.2"
+        android:strokeColor="#818CF8"
+        android:strokeAlpha="0.4"
+        android:pathData="M 30,79 A 24,7 0 1,0 78,79 A 24,7 0 1,0 30,79" />
+
+    <!-- Modern GPS Location Pin Body -->
+    <path
+        android:strokeWidth="2.2"
+        android:strokeColor="#A5B4FC"
+        android:pathData="M 54,28 C 42,28 34,36 34,48 C 34,60 51,75 54,77 C 57,75 74,60 74,48 C 74,36 66,28 54,28 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:angle="270"
+                android:startColor="#312E81"
+                android:centerColor="#1E1B4B"
+                android:endColor="#0F172A"
+                android:type="linear" />
+        </aapt:attr>
+    </path>
+
+    <!-- Pin Inner Glow Accent -->
+    <path
+        android:strokeWidth="1"
+        android:strokeColor="#22D3EE"
+        android:strokeAlpha="0.8"
+        android:pathData="M 54,31 C 44,31 37,38 37,48 C 37,57 51,69 54,72 C 57,69 71,57 71,48 C 71,38 64,31 54,31 Z" />
+
+    <!-- Bell Top Ring -->
+    <path
+        android:fillColor="#06B6D4"
+        android:pathData="M54,39m-2.2,0a2.2,2.2 0,1 1,4.4 0a2.2,2.2 0,1 1,-4.4 0" />
+
+    <!-- Bell Body (Illuminated Cyan / Neon) -->
+    <path
+        android:pathData="M 54,40 C 47,40 45,46 45,52 C 45,54 42,56 42,57 L 66,57 C 66,56 63,54 63,52 C 63,46 61,40 54,40 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:angle="90"
+                android:startColor="#22D3EE"
+                android:endColor="#06B6D4"
+                android:type="linear" />
+        </aapt:attr>
+    </path>
+
+    <!-- Bell Rim -->
+    <path
+        android:strokeWidth="1.5"
+        android:strokeColor="#E0F2FE"
+        android:fillColor="#38BDF8"
+        android:pathData="M 40,57 L 68,57 C 68.8,57 69,58.5 68,58.5 L 40,58.5 C 39,58.5 39.2,57 40,57 Z" />
+
+    <!-- Bell Clapper / Pendulum -->
+    <path
+        android:fillColor="#F472B6"
+        android:pathData="M54,60.5m-2.2,0a2.2,2.2 0,1 1,4.4 0a2.2,2.2 0,1 1,-4.4 0" />
+</vector>

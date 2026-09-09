@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import com.remindly.data.repo.ReminderRepository
 import com.remindly.domain.model.ReminderStatus
+import com.remindly.location.GeofenceManager
 import com.remindly.time.AlarmScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +24,9 @@ class NotificationActionReceiver : BroadcastReceiver() {
     @Inject
     lateinit var alarmScheduler: AlarmScheduler
 
+    @Inject
+    lateinit var geofenceManager: GeofenceManager
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -36,6 +40,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 when (intent.action) {
                     ACTION_COMPLETE -> {
                         reminderRepository.setStatus(reminderId, ReminderStatus.COMPLETED)
+                        geofenceManager.removeGeofence(reminderId)
                         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                         notificationManager.cancel(reminderId.toInt())
                     }
