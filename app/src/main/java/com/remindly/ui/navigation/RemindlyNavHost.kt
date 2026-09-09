@@ -9,6 +9,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.remindly.auth.AuthManager
+import com.remindly.data.settings.VoiceAlarmSettings
+import com.remindly.data.settings.VoiceAlarmSettingsRepository
 import com.remindly.ui.auth.LoginScreen
 import com.remindly.ui.capture.CaptureViewModel
 import com.remindly.ui.capture.PlacePickerScreen
@@ -17,18 +19,26 @@ import com.remindly.ui.detail.DetailViewModel
 import com.remindly.ui.detail.ReminderDetailScreen
 import com.remindly.ui.home.HomeScreen
 import com.remindly.ui.logs.LogsScreen
+import com.remindly.ui.onboarding.LanguageOnboardingScreen
 import com.remindly.ui.settings.SettingsScreen
 
 @Composable
 fun RemindlyNavHost(
-    authManager: AuthManager
+    authManager: AuthManager,
+    settingsRepository: VoiceAlarmSettingsRepository
 ) {
     val navController = rememberNavController()
     val currentUser by authManager.currentUserState.collectAsStateWithLifecycle()
+    val settings by settingsRepository.settingsFlow.collectAsStateWithLifecycle(initialValue = VoiceAlarmSettings())
 
-    // Redirection réactive selon l'état de connexion
-    LaunchedEffect(currentUser) {
-        if (currentUser == null) {
+    // Redirection réactive selon l'onboarding langue et l'état de connexion
+    LaunchedEffect(currentUser, settings.hasSelectedLanguage) {
+        if (!settings.hasSelectedLanguage) {
+            navController.navigate(Routes.LanguageOnboarding.route) {
+                popUpTo(0) { inclusive = true }
+                launchSingleTop = true
+            }
+        } else if (currentUser == null) {
             navController.navigate(Routes.Login.route) {
                 popUpTo(0) { inclusive = true }
                 launchSingleTop = true
@@ -41,10 +51,30 @@ fun RemindlyNavHost(
         }
     }
 
+    val startDest = if (!settings.hasSelectedLanguage) {
+        Routes.LanguageOnboarding.route
+    } else if (currentUser == null) {
+        Routes.Login.route
+    } else {
+        Routes.Home.route
+    }
+
     NavHost(
         navController = navController,
-        startDestination = Routes.Login.route
+        startDestination = startDest
     ) {
+        composable(Routes.LanguageOnboarding.route) {
+            LanguageOnboardingScreen(
+                onComplete = {
+                    val nextRoute = if (currentUser == null) Routes.Login.route else Routes.Home.route
+                    navController.navigate(nextRoute) {
+                        popUpTo(Routes.LanguageOnboarding.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            )
+        }
+
         composable(Routes.Login.route) {
             LoginScreen()
         }

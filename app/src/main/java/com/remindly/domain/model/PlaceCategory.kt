@@ -57,6 +57,28 @@ enum class PlaceCategory(
         keywords = listOf("restaurant", "café", "pizzeria", "fast food")
     );
 
+    fun getLocalizedDisplayName(language: String?): String {
+        return when (language?.lowercase()) {
+            "ar" -> when (this) {
+                SUPERMARKET -> "سوبيرات / بقالة"
+                PHARMACY -> "صيدلية"
+                BAKERY -> "مخبزة / كوشة"
+                GAS_STATION -> "محطة وقود / بومبة"
+                ATM -> "صراف آلي / بنك"
+                RESTAURANT -> "مطعم / مقهى"
+            }
+            "en" -> when (this) {
+                SUPERMARKET -> "Supermarket / Grocery"
+                PHARMACY -> "Pharmacy"
+                BAKERY -> "Bakery"
+                GAS_STATION -> "Gas Station"
+                ATM -> "ATM / Bank"
+                RESTAURANT -> "Restaurant / Cafe"
+            }
+            else -> displayName
+        }
+    }
+
     companion object {
         fun fromId(id: String?): PlaceCategory? {
             return entries.firstOrNull { it.id.equals(id, ignoreCase = true) }
@@ -67,6 +89,20 @@ enum class PlaceCategory(
 enum class CategoryReferenceType(val id: String, val displayName: String) {
     CURRENT_LOCATION("CURRENT_LOCATION", "Autour de ma position"),
     COMMUTE_ROUTE("COMMUTE_ROUTE", "Sur mon trajet habituel");
+
+    fun getLocalizedDisplayName(language: String?): String {
+        return when (language?.lowercase()) {
+            "ar" -> when (this) {
+                CURRENT_LOCATION -> "حول موقعي الحالي"
+                COMMUTE_ROUTE -> "على مسار طريقي اليومي"
+            }
+            "en" -> when (this) {
+                CURRENT_LOCATION -> "Around my current location"
+                COMMUTE_ROUTE -> "On my usual commute route"
+            }
+            else -> displayName
+        }
+    }
 
     companion object {
         fun fromId(id: String?): CategoryReferenceType {

@@ -31,7 +31,9 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.remindly.data.settings.VoiceAlarmSettings
+import com.remindly.domain.model.AppLanguage
 import com.remindly.notify.NotificationChannels
+import com.remindly.ui.theme.LocalAppStrings
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -43,6 +45,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val strings = LocalAppStrings.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val isTestingVolume by viewModel.isTestingVolume.collectAsStateWithLifecycle()
@@ -54,7 +57,7 @@ fun SettingsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Paramètres",
+                        strings.settingsTitle,
                         fontWeight = FontWeight.Bold
                     )
                 },
@@ -62,7 +65,7 @@ fun SettingsScreen(
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Retour"
+                            contentDescription = strings.back
                         )
                     }
                 },
@@ -81,10 +84,58 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
+            // ─── Section 0 : Langue de l'application ─────────────────────────
+            SettingsCard(
+                title = strings.settingsLanguageSectionTitle,
+                subtitle = strings.settingsLanguageSectionSubtitle,
+                icon = Icons.Filled.Language,
+                iconColor = MaterialTheme.colorScheme.primary
+            ) {
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    Text(
+                        text = strings.settingsLanguageCurrent,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    Spacer(Modifier.height(10.dp))
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AppLanguage.entries.forEach { lang ->
+                            val isSelected = settings.appLanguage == lang.code
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.updateAppLanguage(lang.code) },
+                                label = {
+                                    Text(
+                                        text = "${lang.flagEmoji} ${lang.nativeName}",
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                leadingIcon = if (isSelected) {
+                                    {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null,
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
             // ─── Section 1 : Rappels Vocaux (Audio) ───────────────────────────
             SettingsCard(
-                title = "Rappels Vocaux",
-                subtitle = "Personnalisez la sonnerie pour vos enregistrements audio",
+                title = strings.settingsVoiceSectionTitle,
+                subtitle = strings.settingsVoiceSectionSubtitle,
                 icon = Icons.Filled.RecordVoiceOver,
                 iconColor = MaterialTheme.colorScheme.primary
             ) {
@@ -109,7 +160,7 @@ fun SettingsScreen(
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "Volume sonore",
+                                strings.settingsVolume,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
@@ -152,7 +203,7 @@ fun SettingsScreen(
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(if (isTestingVolume) "Arrêter le test" else "Tester le volume")
+                        Text(if (isTestingVolume) strings.settingsStopVolumeTest else strings.settingsTestVolume)
                     }
                 }
 
@@ -173,12 +224,12 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Column {
                             Text(
-                                "Répétition audio",
+                                strings.settingsRepeatAudio,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "Nombre de diffusions de l'enregistrement",
+                                strings.settingsRepeatSubtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -188,11 +239,11 @@ fun SettingsScreen(
                     Spacer(Modifier.height(12.dp))
 
                     val repeatOptions = listOf(
-                        1 to "1 fois",
-                        2 to "2 fois",
-                        3 to "3 fois",
-                        5 to "5 fois",
-                        VoiceAlarmSettings.REPEAT_LOOP to "En boucle"
+                        1 to strings.settingsRepeatOnce,
+                        2 to strings.settingsRepeatTwice,
+                        3 to strings.settingsRepeatThrice,
+                        5 to strings.settingsRepeat5Times,
+                        VoiceAlarmSettings.REPEAT_LOOP to strings.settingsRepeatLoop
                     )
 
                     FlowRow(
@@ -244,7 +295,7 @@ fun SettingsScreen(
                                 )
                                 Spacer(Modifier.width(8.dp))
                                 Text(
-                                    "L'audio tournera en continu jusqu'à ce que vous appuyiez sur « Arrêter » dans la notification.",
+                                    strings.settingsRepeatLoopWarning,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
@@ -278,12 +329,12 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Column {
                             Text(
-                                "Vibration",
+                                strings.settingsVibration,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "Vibrer pendant la sonnerie vocale",
+                                strings.settingsVibrationSubtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -321,12 +372,12 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Column {
                             Text(
-                                "Annoncer le lieu par voix",
+                                strings.settingsAnnouncePlace,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "Prononce le nom du commerce ou lieu détecté (ex: « À proximité de Family Shop »)",
+                                strings.settingsAnnouncePlaceSubtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -364,12 +415,12 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Column {
                             Text(
-                                "Lire les rappels texte à voix haute",
+                                strings.settingsReadTextAloud,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "Utilise la synthèse vocale pour lire le rappel si aucun enregistrement vocal n'est présent",
+                                strings.settingsReadTextAloudSubtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -385,8 +436,8 @@ fun SettingsScreen(
 
             // ─── Section 2 : Trajet Habituel & Périmètre POI ───────────────────
             SettingsCard(
-                title = "Trajet & Périmètre des Lieux",
-                subtitle = "Configuration pour les rappels par catégorie (supérettes, etc.)",
+                title = strings.settingsCommuteSectionTitle,
+                subtitle = strings.settingsCommuteSectionSubtitle,
                 icon = Icons.Filled.DirectionsCar,
                 iconColor = MaterialTheme.colorScheme.secondary
             ) {
@@ -410,14 +461,14 @@ fun SettingsScreen(
                             Spacer(Modifier.width(8.dp))
                             Column {
                                 Text(
-                                    "Mon trajet habituel",
+                                    strings.settingsMyCommuteRoute,
                                     style = MaterialTheme.typography.bodyLarge,
                                     fontWeight = FontWeight.Medium
                                 )
                                 Text(
                                     if (settings.hasCommuteRoute)
                                         "${settings.commuteStartLabel ?: "Départ"} ➔ ${settings.commuteEndLabel ?: "Arrivée"}"
-                                    else "Non configuré (Départ ➔ Arrivée sur la carte)",
+                                    else strings.settingsCommuteNotConfigured,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = if (settings.hasCommuteRoute) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontWeight = if (settings.hasCommuteRoute) FontWeight.SemiBold else FontWeight.Normal
@@ -433,7 +484,7 @@ fun SettingsScreen(
                                 ) {
                                     Icon(
                                         Icons.Filled.DeleteOutline,
-                                        contentDescription = "Effacer le trajet",
+                                        contentDescription = strings.settingsClearRoute,
                                         tint = MaterialTheme.colorScheme.error,
                                         modifier = Modifier.size(20.dp)
                                     )
@@ -444,7 +495,7 @@ fun SettingsScreen(
                                 shape = RoundedCornerShape(10.dp),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                             ) {
-                                Text(if (settings.hasCommuteRoute) "Modifier" else "Tracer")
+                                Text(if (settings.hasCommuteRoute) strings.settingsModifyRoute else strings.settingsTraceRoute)
                             }
                         }
                     }
@@ -467,12 +518,12 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Column {
                             Text(
-                                "Rayon de détection des commerces",
+                                strings.settingsPoiDetectionRadius,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "Taille de la zone circulaire autour de chaque commerce (POIs)",
+                                strings.settingsPoiDetectionRadiusSubtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -482,9 +533,9 @@ fun SettingsScreen(
                     Spacer(Modifier.height(12.dp))
 
                     val detectionRadiusOptions = listOf(
-                        250 to "250 m (Piéton)",
+                        250 to "250 m",
                         350 to "350 m",
-                        450 to "450 m (Recommandé / Voiture)",
+                        450 to "450 m",
                         600 to "600 m",
                         800 to "800 m",
                         1000 to "1 km"
@@ -538,12 +589,12 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Column {
                             Text(
-                                "Périmètre de recherche globale POI",
+                                strings.settingsPoiGlobalSearchRadius,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "Rayon maximal autour de vous pour trouver les commerces sur Google Places",
+                                strings.settingsPoiGlobalSearchRadiusSubtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -553,9 +604,9 @@ fun SettingsScreen(
                     Spacer(Modifier.height(12.dp))
 
                     val radiusOptions = listOf(
-                        1 to "1 km (Piéton)",
+                        1 to "1 km",
                         2 to "2 km",
-                        3 to "3 km (Défaut)",
+                        3 to "3 km",
                         5 to "5 km",
                         10 to "10 km"
                     )
@@ -608,12 +659,12 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Column {
                             Text(
-                                "Zone tampon de sortie (Fenêtre glissante)",
+                                strings.settingsRollingExitRadius,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "Distance parcourue en voiture avant d'actualiser automatiquement les commerces devant vous",
+                                strings.settingsRollingExitRadiusSubtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -623,10 +674,10 @@ fun SettingsScreen(
                     Spacer(Modifier.height(12.dp))
 
                     val rollingExitOptions = listOf(
-                        1500 to "1.5 km (Piéton / Vélo)",
-                        2500 to "2.5 km (Recommandé / Voiture)",
-                        3500 to "3.5 km (Périurbain)",
-                        5000 to "5.0 km (Voie rapide)"
+                        1500 to "1.5 km",
+                        2500 to "2.5 km",
+                        3500 to "3.5 km",
+                        5000 to "5.0 km"
                     )
 
                     FlowRow(
@@ -677,12 +728,12 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Column {
                             Text(
-                                "Délai anti-rebond entre alertes",
+                                strings.settingsGeofenceCooldown,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "Temps d'attente minimal avant de refaire sonner le rappel pour un commerce voisin",
+                                strings.settingsGeofenceCooldownSubtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -692,9 +743,9 @@ fun SettingsScreen(
                     Spacer(Modifier.height(12.dp))
 
                     val cooldownOptions = listOf(
-                        5 to "5 s (Très rapide)",
+                        5 to "5 s",
                         10 to "10 s",
-                        15 to "15 s (Recommandé)",
+                        15 to "15 s",
                         30 to "30 s",
                         60 to "1 min",
                         90 to "1m30"
@@ -756,12 +807,12 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Column {
                             Text(
-                                "Filtre intelligent d'accessibilité",
+                                strings.settingsSmartFilter,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "Ignore les commerces hors d'atteinte (vitesse de voie rapide/autoroute ou sens opposé)",
+                                strings.settingsSmartFilterSubtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -780,12 +831,12 @@ fun SettingsScreen(
                     // G. Vitesse maximale de déclenchement
                     Column(modifier = Modifier.padding(vertical = 4.dp)) {
                         Text(
-                            "Vitesse seuil de transit rapide",
+                            strings.settingsSmartFilterSpeedThreshold,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            "Au-delà de cette vitesse, les alertes pour commerces de proximité sont filtrées",
+                            strings.settingsSmartFilterSpeedThresholdSubtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -793,9 +844,9 @@ fun SettingsScreen(
                         Spacer(Modifier.height(8.dp))
 
                         val speedOptions = listOf(
-                            50 to "50 km/h (Ville)",
-                            65 to "65 km/h (Recommandé)",
-                            80 to "80 km/h (Périurbain)",
+                            50 to "50 km/h",
+                            65 to "65 km/h",
+                            80 to "80 km/h",
                             90 to "90 km/h"
                         )
 
@@ -834,14 +885,14 @@ fun SettingsScreen(
 
             // ─── Section 3 : Canaux Système ───────────────────────────────────
             SettingsCard(
-                title = "Notifications Système",
-                subtitle = "Sonneries par défaut pour les rappels sans voix",
+                title = strings.settingsSystemChannelsSectionTitle,
+                subtitle = strings.settingsSystemChannelsSectionSubtitle,
                 icon = Icons.Filled.Notifications,
                 iconColor = MaterialTheme.colorScheme.tertiary
             ) {
                 SettingsActionRow(
-                    title = "Canal Rappels Programmés (Temps)",
-                    subtitle = "Sonnerie, voyant et pop-up pour les heures",
+                    title = strings.settingsChannelTimeTitle,
+                    subtitle = strings.settingsChannelTimeSubtitle,
                     icon = Icons.Filled.Schedule,
                     onClick = {
                         val intent = Intent(AndroidSettings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
@@ -855,8 +906,8 @@ fun SettingsScreen(
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 SettingsActionRow(
-                    title = "Canal Rappels Géolocalisés (Lieu)",
-                    subtitle = "Sonnerie, voyant et pop-up pour le GPS",
+                    title = strings.settingsChannelPlaceTitle,
+                    subtitle = strings.settingsChannelPlaceSubtitle,
                     icon = Icons.Filled.LocationOn,
                     onClick = {
                         val intent = Intent(AndroidSettings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
@@ -870,14 +921,14 @@ fun SettingsScreen(
 
             // ─── Section 4 : Diagnostic & Logs ───────────────────────────────
             SettingsCard(
-                title = "Diagnostic & Journal (Logs)",
-                subtitle = "Historique technique et traçabilité du cycle de vie des rappels",
+                title = strings.settingsLogsSectionTitle,
+                subtitle = strings.settingsLogsSectionSubtitle,
                 icon = Icons.Filled.BugReport,
                 iconColor = MaterialTheme.colorScheme.tertiary
             ) {
                 SettingsActionRow(
-                    title = "Voir le journal des événements (Logs)",
-                    subtitle = "Consulter les étapes de création, POIs, armements et déclenchements",
+                    title = strings.settingsViewLogs,
+                    subtitle = strings.settingsViewLogsSubtitle,
                     icon = Icons.Filled.History,
                     onClick = onNavigateToLogs
                 )
@@ -885,8 +936,8 @@ fun SettingsScreen(
 
             // ─── Section 5 : Compte ───────────────────────────────────────────
             SettingsCard(
-                title = "Compte & Session",
-                subtitle = "Gestion de votre profil Remindly",
+                title = strings.settingsAccountSectionTitle,
+                subtitle = strings.settingsAccountSectionSubtitle,
                 icon = Icons.Filled.AccountCircle,
                 iconColor = MaterialTheme.colorScheme.primary
             ) {
@@ -899,12 +950,12 @@ fun SettingsScreen(
                 ) {
                     Column {
                         Text(
-                            "Connecté en tant que",
+                            strings.settingsConnectedAs,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            currentUser?.email ?: "Non connecté",
+                            currentUser?.email ?: strings.settingsNotConnected,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -922,7 +973,7 @@ fun SettingsScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(6.dp))
-                        Text("Déconnexion")
+                        Text(strings.settingsLogout)
                     }
                 }
             }
@@ -936,8 +987,8 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
             icon = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Se déconnecter ?") },
-            text = { Text("Vous devrez vous reconnecter pour synchroniser vos rappels.") },
+            title = { Text(strings.settingsLogoutConfirmTitle) },
+            text = { Text(strings.settingsLogoutConfirmMessage) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -946,12 +997,12 @@ fun SettingsScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("Déconnexion")
+                    Text(strings.settingsLogout)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showLogoutDialog = false }) {
-                    Text("Annuler")
+                    Text(strings.cancel)
                 }
             }
         )

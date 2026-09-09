@@ -23,11 +23,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.remindly.ui.theme.LocalAppStrings
 
 @Composable
 fun LoginScreen(
     viewModel: LoginViewModel = hiltViewModel()
 ) {
+    val strings = LocalAppStrings.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -128,7 +130,7 @@ fun LoginScreen(
 
             // Nom de l'app
             Text(
-                text = "Remindly",
+                text = strings.appName,
                 fontSize = 40.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
@@ -139,7 +141,7 @@ fun LoginScreen(
 
             // Sous-titre
             Text(
-                text = "Vos rappels, partout et ensemble.",
+                text = strings.loginSubtitle,
                 fontSize = 15.sp,
                 color = Color.White.copy(alpha = 0.65f),
                 textAlign = TextAlign.Center,
@@ -179,7 +181,7 @@ fun LoginScreen(
                     )
                     Spacer(Modifier.width(12.dp))
                     Text(
-                        text = "Continuer avec Google",
+                        text = strings.continueWithGoogle,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = Color(0xFF1A1A2E)
@@ -210,7 +212,7 @@ fun LoginScreen(
 
             // Mention légère en bas
             Text(
-                text = "En continuant, vous acceptez nos\nConditions d'utilisation",
+                text = strings.loginTerms,
                 fontSize = 12.sp,
                 color = Color.White.copy(alpha = 0.35f),
                 textAlign = TextAlign.Center,

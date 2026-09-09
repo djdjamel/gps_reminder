@@ -4,6 +4,10 @@ data class VoiceAlarmSettings(
     val volume: Float = 1.0f,          // 0.05f à 1.0f (5% à 100%)
     val repeatCount: Int = 1,          // 1, 2, 3, 5, ou -1 (boucle continue)
     val vibrate: Boolean = true,
+    // Langue de l'application ("fr", "ar", "en")
+    val appLanguage: String = "fr",
+    // L'utilisateur a-t-il déjà sélectionné la langue initiale au 1er démarrage
+    val hasSelectedLanguage: Boolean = false,
     // Périmètre de recherche globale des catégories (1, 2, 3, 5, 10 km)
     val poiSearchRadiusKm: Int = 3,
     // Rayon de détection de chaque géofence de commerce POI en mètres (défaut : 450m)

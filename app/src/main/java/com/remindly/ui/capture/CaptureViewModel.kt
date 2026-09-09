@@ -62,9 +62,10 @@ class CaptureViewModel @Inject constructor(
     }
 
     /**
-     * Traite la transcription vocale en extrayant automatiquement l'action et la catégorie de lieu.
+     * Traite la transcription vocale en extrayant automatiquement l'action et la catégorie de lieu,
+     * et en adaptant les messages de feedback à la langue active.
      */
-    fun onVoiceTranscribed(rawText: String) {
+    fun onVoiceTranscribed(rawText: String, languageCode: String? = null) {
         if (rawText.isBlank()) return
         val parsed = com.remindly.util.VoiceIntentParser.parse(rawText)
 
@@ -79,13 +80,24 @@ class CaptureViewModel @Inject constructor(
             var updatedLabel = current.placeLabel
             var feedback: String? = null
 
+            val localizedCategoryName = parsed.detectedCategory?.getLocalizedDisplayName(languageCode)
+
             if (parsed.detectedCategory != null) {
                 updatedCategory = parsed.detectedCategory.id
-                updatedLabel = parsed.detectedCategory.displayName
-                feedback = "Catégorie détectée : ${parsed.detectedCategory.displayName}"
+                updatedLabel = localizedCategoryName
+                val prefix = when (languageCode?.lowercase()) {
+                    "ar" -> "تم تحديد الفئة: "
+                    "en" -> "Detected category: "
+                    else -> "Catégorie détectée : "
+                }
+                feedback = "$prefix$localizedCategoryName"
                 appLogger.i("VOICE_INTENT", "Voix analysée: '$rawText' -> Catégorie: ${parsed.detectedCategory.name}")
             } else {
-                feedback = "Texte dicté ajouté"
+                feedback = when (languageCode?.lowercase()) {
+                    "ar" -> "تمت إضافة النص المنطوق"
+                    "en" -> "Dictated text added"
+                    else -> "Texte dicté ajouté"
+                }
             }
 
             current.copy(

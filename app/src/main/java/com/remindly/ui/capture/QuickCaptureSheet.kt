@@ -47,6 +47,13 @@ fun QuickCaptureSheet(
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val focusRequester = remember { FocusRequester() }
+    val strings = com.remindly.ui.theme.LocalAppStrings.current
+
+    val currentLangCode = when (strings) {
+        com.remindly.ui.theme.ArabicStrings -> "ar"
+        com.remindly.ui.theme.EnglishStrings -> "en"
+        else -> "fr"
+    }
 
     var isDismissing by remember { mutableStateOf(false) }
 
@@ -72,7 +79,7 @@ fun QuickCaptureSheet(
             if (result.resultCode == android.app.Activity.RESULT_OK) {
                 val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
                 if (!matches.isNullOrEmpty()) {
-                    viewModel.onVoiceTranscribed(matches[0])
+                    viewModel.onVoiceTranscribed(matches[0], currentLangCode)
                 }
             }
         }
@@ -82,13 +89,18 @@ fun QuickCaptureSheet(
         try {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_PROMPT, "Dictez votre rappel (ex: Acheter du pain à la boulangerie)...")
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+                putExtra(RecognizerIntent.EXTRA_PROMPT, strings.voiceDictationPrompt)
+                val langTag = when (currentLangCode) {
+                    "ar" -> "ar-DZ"
+                    "en" -> "en-US"
+                    else -> "fr-FR"
+                }
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, langTag)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             }
             speechRecognitionLauncher.launch(intent)
         } catch (e: Exception) {
-            Toast.makeText(context, "Reconnaissance vocale non disponible", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, strings.voiceDictationUnavailable, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -114,11 +126,11 @@ fun QuickCaptureSheet(
         if (uiState.errorMessage != null) {
             AlertDialog(
                 onDismissRequest = { viewModel.clearError() },
-                title = { Text("Erreur de synchronisation") },
+                title = { Text(strings.syncErrorTitle) },
                 text = { Text(uiState.errorMessage!!) },
                 confirmButton = {
                     Button(onClick = { viewModel.clearError() }) {
-                        Text("Compris")
+                        Text(strings.understand)
                     }
                 }
             )
@@ -136,7 +148,7 @@ fun QuickCaptureSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester),
-                placeholder = { Text("Se rappeler de… ou appuyez sur le micro") },
+                placeholder = { Text(strings.capturePlaceholder) },
                 trailingIcon = {
                     IconButton(
                         onClick = launchSpeechRecognition,
@@ -144,7 +156,7 @@ fun QuickCaptureSheet(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Mic,
-                            contentDescription = "Dictée vocale rapide",
+                            contentDescription = strings.voiceDictationTooltip,
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -203,9 +215,9 @@ fun QuickCaptureSheet(
             ) {
                 // Chip Heure
                 val timeLabel = if (uiState.triggerTimeMillis != null) {
-                    val sdf = SimpleDateFormat("dd/MM à HH:mm", Locale.FRANCE)
+                    val sdf = SimpleDateFormat("dd/MM à HH:mm", Locale.getDefault())
                     sdf.format(Date(uiState.triggerTimeMillis!!))
-                } else "Ajouter une heure"
+                } else strings.addTimeChip
 
                 FilterChip(
                     selected = uiState.triggerTimeMillis != null,
@@ -238,7 +250,7 @@ fun QuickCaptureSheet(
                     trailingIcon = if (uiState.triggerTimeMillis != null) {
                         {
                             Icon(
-                                Icons.Filled.Close, "Supprimer l'heure",
+                                Icons.Filled.Close, strings.removeTimeTooltip,
                                 modifier = Modifier.size(18.dp).clickable { viewModel.clearTriggerTime() }
                             )
                         }
@@ -247,7 +259,7 @@ fun QuickCaptureSheet(
 
                 // Chip Lieu
                 val hasPlace = uiState.placeLat != null || uiState.placeCategory != null
-                val placeLabel = uiState.placeLabel ?: "Ajouter un lieu"
+                val placeLabel = uiState.placeLabel ?: strings.addPlaceChip
                 FilterChip(
                     selected = hasPlace,
                     onClick = { onNavigateToPlacePicker() },
@@ -259,7 +271,7 @@ fun QuickCaptureSheet(
                     trailingIcon = if (hasPlace) {
                         {
                             Icon(
-                                Icons.Filled.Close, "Supprimer le lieu",
+                                Icons.Filled.Close, strings.removePlaceTooltip,
                                 modifier = Modifier.size(18.dp).clickable { viewModel.clearPlace() }
                             )
                         }
@@ -272,7 +284,7 @@ fun QuickCaptureSheet(
                     onClick = {
                         photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     },
-                    label = { Text(if (uiState.imageUris.isEmpty()) "Image" else "${uiState.imageUris.size} image(s)") },
+                    label = { Text(if (uiState.imageUris.isEmpty()) strings.photoChipEmpty else strings.photoChipCount(uiState.imageUris.size)) },
                     leadingIcon = { Icon(Icons.Filled.Image, null, Modifier.size(18.dp)) }
                 )
             }
@@ -285,7 +297,7 @@ fun QuickCaptureSheet(
                         Box {
                             AsyncImage(
                                 model = uri,
-                                contentDescription = "Image jointe",
+                                contentDescription = "Image",
                                 modifier = Modifier
                                     .size(72.dp)
                                     .clip(RoundedCornerShape(8.dp)),
@@ -297,7 +309,7 @@ fun QuickCaptureSheet(
                             ) {
                                 Icon(
                                     Icons.Filled.Close,
-                                    contentDescription = "Retirer",
+                                    contentDescription = strings.delete,
                                     tint = MaterialTheme.colorScheme.error,
                                     modifier = Modifier.size(16.dp)
                                 )
@@ -331,7 +343,7 @@ fun QuickCaptureSheet(
                     Icon(Icons.Filled.Check, null, Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
                 }
-                Text("Enregistrer")
+                Text(strings.save)
             }
         }
     }

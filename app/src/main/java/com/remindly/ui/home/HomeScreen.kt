@@ -1,6 +1,5 @@
 package com.remindly.ui.home
 
-
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,6 +34,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import com.remindly.notify.NotificationChannels
+import com.remindly.ui.theme.LocalAppStrings
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,11 +44,11 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
+    val strings = LocalAppStrings.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val currentWorkspaceEmail by viewModel.currentWorkspaceEmail.collectAsStateWithLifecycle()
     val collaborators by viewModel.collaborators.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
-
 
     val context = LocalContext.current
     var showWorkspaceMenu by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
@@ -66,10 +66,10 @@ fun HomeScreen(
                         modifier = Modifier.clickable { showWorkspaceMenu = true }.padding(4.dp)
                     ) {
                         Text(
-                            text = if (currentWorkspaceEmail == null) "Mon Espace" else "Espace de $currentWorkspaceEmail",
+                            text = if (currentWorkspaceEmail == null) strings.myWorkspace else strings.workspaceOf(currentWorkspaceEmail!!),
                             style = MaterialTheme.typography.titleLarge
                         )
-                        Icon(Icons.Filled.ArrowDropDown, contentDescription = "Changer d'espace")
+                        Icon(Icons.Filled.ArrowDropDown, contentDescription = strings.connectToWorkspace)
                     }
                     
                     DropdownMenu(
@@ -77,7 +77,7 @@ fun HomeScreen(
                         onDismissRequest = { showWorkspaceMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Mon Espace (Personnel)", fontWeight = if (currentWorkspaceEmail == null) FontWeight.Bold else FontWeight.Normal) },
+                            text = { Text(strings.personalWorkspace, fontWeight = if (currentWorkspaceEmail == null) FontWeight.Bold else FontWeight.Normal) },
                             onClick = {
                                 viewModel.switchToPersonalWorkspace()
                                 showWorkspaceMenu = false
@@ -86,7 +86,7 @@ fun HomeScreen(
                         )
                         HorizontalDivider()
                         DropdownMenuItem(
-                            text = { Text("Se connecter à un espace...") },
+                            text = { Text(strings.connectToWorkspace) },
                             onClick = {
                                 showWorkspaceMenu = false
                                 showWorkspaceDialog = true
@@ -101,13 +101,13 @@ fun HomeScreen(
                         IconButton(onClick = { viewModel.signOut() }) {
                             Icon(
                                 Icons.Filled.AccountCircle,
-                                contentDescription = "Se déconnecter (${currentUser?.email})"
+                                contentDescription = "${strings.settingsLogout} (${currentUser?.email})"
                             )
                         }
                     }
                     
                     IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Paramètres")
+                        Icon(Icons.Filled.Settings, contentDescription = strings.settingsTitle)
                     }
                 }
             )
@@ -115,8 +115,8 @@ fun HomeScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onNavigateToCapture,
-                icon = { Icon(Icons.Filled.Add, contentDescription = "Ajouter") },
-                text = { Text("Ajouter") }
+                icon = { Icon(Icons.Filled.Add, contentDescription = strings.newReminderFab) },
+                text = { Text(strings.newReminderFab) }
             )
         }
     ) { paddingValues ->
@@ -136,8 +136,15 @@ fun HomeScreen(
                     )
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        "Aucun rappel pour le moment.",
-                        style = MaterialTheme.typography.bodyLarge,
+                        strings.noRemindersTitle,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        strings.noRemindersSubtitle,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -181,11 +188,11 @@ fun HomeScreen(
     if (showWorkspaceDialog) {
         AlertDialog(
             onDismissRequest = { showWorkspaceDialog = false },
-            title = { Text("Mes Collaborateurs") },
+            title = { Text(strings.collaboratorsTitle) },
             text = {
                 Column {
                     if (collaborators.isEmpty()) {
-                        Text("Aucun collaborateur enregistré.", style = MaterialTheme.typography.bodyMedium)
+                        Text(strings.noCollaborators, style = MaterialTheme.typography.bodyMedium)
                     } else {
                         LazyColumn(
                             modifier = Modifier.heightIn(max = 300.dp)
@@ -223,12 +230,12 @@ fun HomeScreen(
                 ) {
                     Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Ajouter")
+                    Text(strings.newReminderFab)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showWorkspaceDialog = false }) {
-                    Text("Fermer")
+                    Text(strings.close)
                 }
             }
         )
@@ -237,13 +244,13 @@ fun HomeScreen(
     if (showAddCollaboratorDialog) {
         AlertDialog(
             onDismissRequest = { showAddCollaboratorDialog = false },
-            title = { Text("Nouveau collaborateur") },
+            title = { Text(strings.newCollaboratorTitle) },
             text = {
                 Column {
                     OutlinedTextField(
                         value = newCollaboratorName,
                         onValueChange = { newCollaboratorName = it },
-                        label = { Text("Nom (ex: Maman)") },
+                        label = { Text(strings.collaboratorNameLabel) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -251,7 +258,7 @@ fun HomeScreen(
                     OutlinedTextField(
                         value = newCollaboratorEmail,
                         onValueChange = { newCollaboratorEmail = it },
-                        label = { Text("Adresse E-mail") },
+                        label = { Text(strings.collaboratorEmailLabel) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -268,12 +275,12 @@ fun HomeScreen(
                         }
                     }
                 ) {
-                    Text("Enregistrer")
+                    Text(strings.save)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showAddCollaboratorDialog = false }) {
-                    Text("Annuler")
+                    Text(strings.cancel)
                 }
             }
         )
@@ -323,6 +330,7 @@ fun ReminderItem(
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit
 ) {
+    val strings = LocalAppStrings.current
     val isCompleted = reminder.status == ReminderStatus.COMPLETED
 
     // Première image jointe (pour la miniature)
@@ -355,7 +363,7 @@ fun ReminderItem(
             ) {
                 // Texte
                 Text(
-                    text = reminder.text ?: "(Sans texte)",
+                    text = reminder.text ?: strings.noTextPlaceholder,
                     style = MaterialTheme.typography.bodyLarge,
                     textDecoration = if (isCompleted) TextDecoration.LineThrough else TextDecoration.None,
                     color = if (isCompleted) MaterialTheme.colorScheme.onSurfaceVariant
@@ -397,7 +405,7 @@ fun ReminderItem(
                     // Heure
                     if (reminder.triggerType == TriggerType.TIME || reminder.triggerType == TriggerType.BOTH) {
                         val timeText = reminder.triggerTimeMillis?.let {
-                            SimpleDateFormat("dd/MM HH:mm", Locale.FRANCE).format(Date(it))
+                            SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(it))
                         } ?: ""
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.AccessTime, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
@@ -438,7 +446,7 @@ fun ReminderItem(
             if (firstImage != null) {
                 AsyncImage(
                     model = File(firstImage.localPath),
-                    contentDescription = "Miniature",
+                    contentDescription = strings.photoChipEmpty,
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape),
@@ -455,7 +463,7 @@ fun ReminderItem(
                 IconButton(onClick = onMoveUp, modifier = Modifier.size(28.dp)) {
                     Icon(
                         Icons.Filled.KeyboardArrowUp,
-                        contentDescription = "Monter",
+                        contentDescription = strings.moveUp,
                         modifier = Modifier.size(20.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -463,7 +471,7 @@ fun ReminderItem(
                 IconButton(onClick = onMoveDown, modifier = Modifier.size(28.dp)) {
                     Icon(
                         Icons.Filled.KeyboardArrowDown,
-                        contentDescription = "Descendre",
+                        contentDescription = strings.moveDown,
                         modifier = Modifier.size(20.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -1,6 +1,7 @@
 package com.remindly.ui.navigation
 
 sealed class Routes(val route: String) {
+    object LanguageOnboarding : Routes("language_onboarding")
     object Login : Routes("login")
     object Home : Routes("home")
     object Capture : Routes("capture")

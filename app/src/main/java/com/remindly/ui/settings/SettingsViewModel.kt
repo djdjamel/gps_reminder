@@ -61,6 +61,18 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateAppLanguage(languageCode: String) {
+        viewModelScope.launch {
+            settingsRepository.setAppLanguage(languageCode)
+        }
+    }
+
+    fun setHasSelectedLanguage(selected: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setHasSelectedLanguage(selected)
+        }
+    }
+
     fun updatePoiRadius(radiusKm: Int) {
         viewModelScope.launch {
             settingsRepository.setPoiSearchRadius(radiusKm)

@@ -26,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.remindly.domain.model.AttachmentType
 import com.remindly.ui.components.VoiceRecorderWidget
+import com.remindly.ui.theme.LocalAppStrings
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -37,6 +38,7 @@ fun ReminderDetailScreen(
     onNavigateToPlacePicker: () -> Unit = {},
     viewModel: DetailViewModel = hiltViewModel()
 ) {
+    val strings = LocalAppStrings.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -48,16 +50,16 @@ fun ReminderDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Détails du rappel") },
+                title = { Text(strings.detailTitle) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = strings.back)
                     }
                 },
                 actions = {
                     if (uiState.reminder != null) {
                         IconButton(onClick = { viewModel.delete(onNavigateBack) }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Supprimer")
+                            Icon(Icons.Filled.Delete, contentDescription = strings.delete)
                         }
                     }
                 }
@@ -84,7 +86,7 @@ fun ReminderDetailScreen(
                     ) {
                         Icon(Icons.Filled.Person, null, tint = MaterialTheme.colorScheme.secondary)
                         Spacer(Modifier.width(8.dp))
-                        Text("Envoyé par : $authorName", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodyMedium)
+                        Text(strings.sentBy(authorName), color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
 
@@ -93,7 +95,7 @@ fun ReminderDetailScreen(
                     value = uiState.text,
                     onValueChange = viewModel::updateText,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Texte du rappel") },
+                    label = { Text(strings.reminderTextLabel) },
                     singleLine = false,
                     maxLines = 10
                 )
@@ -107,9 +109,9 @@ fun ReminderDetailScreen(
                 ) {
                     // Chip Heure
                     val timeLabel = if (uiState.triggerTimeMillis != null) {
-                        val sdf = SimpleDateFormat("dd/MM à HH:mm", Locale.FRANCE)
+                        val sdf = SimpleDateFormat("dd/MM à HH:mm", Locale.getDefault())
                         sdf.format(Date(uiState.triggerTimeMillis!!))
-                    } else "Définir une heure"
+                    } else strings.setTime
 
                     FilterChip(
                         selected = uiState.triggerTimeMillis != null,
@@ -143,7 +145,7 @@ fun ReminderDetailScreen(
                         trailingIcon = if (uiState.triggerTimeMillis != null) {
                             {
                                 Icon(
-                                    Icons.Filled.Close, "Supprimer l'heure",
+                                    Icons.Filled.Close, strings.removeTimeTooltip,
                                     modifier = Modifier.size(18.dp).clickable { viewModel.clearTriggerTime() }
                                 )
                             }
@@ -152,7 +154,7 @@ fun ReminderDetailScreen(
 
                     // Chip Lieu
                     val hasPlace = uiState.placeLat != null || uiState.placeCategory != null
-                    val placeLabel = uiState.placeLabel ?: "Définir un lieu"
+                    val placeLabel = uiState.placeLabel ?: strings.setPlace
                     FilterChip(
                         selected = hasPlace,
                         onClick = { onNavigateToPlacePicker() },
@@ -164,7 +166,7 @@ fun ReminderDetailScreen(
                         trailingIcon = if (hasPlace) {
                             {
                                 Icon(
-                                    Icons.Filled.Close, "Supprimer le lieu",
+                                    Icons.Filled.Close, strings.removePlaceTooltip,
                                     modifier = Modifier.size(18.dp).clickable { viewModel.clearPlace() }
                                 )
                             }
@@ -177,7 +179,7 @@ fun ReminderDetailScreen(
                         onClick = {
                             photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                         },
-                        label = { Text("Ajouter image") },
+                        label = { Text(strings.addImage) },
                         leadingIcon = { Icon(Icons.Filled.Image, null, Modifier.size(18.dp)) }
                     )
                 }
@@ -187,7 +189,7 @@ fun ReminderDetailScreen(
                 if (images.isNotEmpty()) {
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "Images jointes :",
+                        strings.attachedImages,
                         style = MaterialTheme.typography.titleSmall
                     )
                     Spacer(Modifier.height(4.dp))
@@ -196,7 +198,7 @@ fun ReminderDetailScreen(
                             Box {
                                 AsyncImage(
                                     model = File(attachment.localPath),
-                                    contentDescription = "Image jointe",
+                                    contentDescription = strings.photoChipEmpty,
                                     modifier = Modifier
                                         .size(100.dp)
                                         .clip(RoundedCornerShape(8.dp)),
@@ -210,7 +212,7 @@ fun ReminderDetailScreen(
                                 ) {
                                     Icon(
                                         Icons.Filled.Close,
-                                        contentDescription = "Supprimer",
+                                        contentDescription = strings.delete,
                                         tint = MaterialTheme.colorScheme.error,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -225,7 +227,7 @@ fun ReminderDetailScreen(
                 val audioAttachment = uiState.reminder?.attachments?.firstOrNull { it.type == AttachmentType.AUDIO }
                 val audioPath = uiState.audioPath ?: audioAttachment?.localPath
                 
-                Text("Note vocale :", style = MaterialTheme.typography.titleSmall)
+                Text(strings.voiceNote, style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.height(4.dp))
                 VoiceRecorderWidget(
                     audioPath = audioPath,
@@ -248,7 +250,7 @@ fun ReminderDetailScreen(
                     ) {
                         Icon(Icons.Filled.Check, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Terminer")
+                        Text(strings.completeReminder)
                     }
 
                     Button(
@@ -260,7 +262,7 @@ fun ReminderDetailScreen(
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                             Spacer(Modifier.width(4.dp))
                         }
-                        Text("Sauvegarder")
+                        Text(strings.save)
                     }
                 }
             }
