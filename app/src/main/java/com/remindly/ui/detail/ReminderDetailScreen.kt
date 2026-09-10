@@ -154,7 +154,8 @@ fun ReminderDetailScreen(
 
                     // Chip Lieu
                     val hasPlace = uiState.placeLat != null || uiState.placeCategory != null
-                    val placeLabel = uiState.placeLabel ?: strings.setPlace
+                    val radiusSuffix = uiState.placeRadiusM?.let { r -> if (r < 1000f) " • ${r.toInt()}m" else " • ${String.format(java.util.Locale.ROOT, "%.1f", r / 1000f)}km" } ?: ""
+                    val placeLabel = (uiState.placeLabel ?: strings.setPlace) + radiusSuffix
                     FilterChip(
                         selected = hasPlace,
                         onClick = { onNavigateToPlacePicker() },

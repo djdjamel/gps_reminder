@@ -32,13 +32,16 @@ import com.google.maps.android.compose.*
 import com.remindly.domain.model.CategoryReferenceType
 import com.remindly.domain.model.CommuteDirection
 import com.remindly.domain.model.PlaceCategory
+import com.remindly.ui.theme.LocalAppStrings
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlacePickerScreen(
-    onPlaceSelected: (LatLng, String?, String?, String?, String?) -> Unit,
+    onPlaceSelected: (LatLng, String?, String?, String?, String?, Float) -> Unit,
     onNavigateBack: () -> Unit,
+    initialRadiusM: Float? = null,
     viewModel: PlacePickerViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -91,14 +94,23 @@ fun PlacePickerScreen(
         }
     }
 
+    val strings = LocalAppStrings.current
+    var selectedRadiusM by remember { mutableFloatStateOf(initialRadiusM ?: userSettings.poiDetectionRadiusM.toFloat()) }
+
+    LaunchedEffect(userSettings.poiDetectionRadiusM) {
+        if (initialRadiusM == null && selectedRadiusM == 450f && userSettings.poiDetectionRadiusM != 450) {
+            selectedRadiusM = userSettings.poiDetectionRadiusM.toFloat()
+        }
+    }
+
     Scaffold(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text("Sélectionner un lieu") },
+                    title = { Text(strings.placePickerTitle) },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = strings.back)
                         }
                     }
                 )
@@ -106,12 +118,12 @@ fun PlacePickerScreen(
                     Tab(
                         selected = selectedTabIndex == 0,
                         onClick = { selectedTabIndex = 0 },
-                        text = { Text("📍 Sur la carte") }
+                        text = { Text(strings.placePickerTabMap) }
                     )
                     Tab(
                         selected = selectedTabIndex == 1,
                         onClick = { selectedTabIndex = 1 },
-                        text = { Text("🏷️ Par catégorie") }
+                        text = { Text(strings.placePickerTabCategory) }
                     )
                 }
             }
@@ -139,8 +151,15 @@ fun PlacePickerScreen(
                 ) {
                     Marker(
                         state = MarkerState(position = selectedLocation),
-                        title = selectedLocationName ?: "Point sélectionné",
+                        title = selectedLocationName ?: strings.placePickerSelectedPoint,
                         snippet = "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
+                    )
+                    Circle(
+                        center = selectedLocation,
+                        radius = selectedRadiusM.toDouble(),
+                        fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                        strokeColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                        strokeWidth = 4f
                     )
                 }
 
@@ -274,7 +293,7 @@ fun PlacePickerScreen(
                     }
                 }
 
-                // Panneau inférieur : Validation du lieu
+                // Panneau inférieur : Réglage du rayon & Validation du lieu
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -285,7 +304,7 @@ fun PlacePickerScreen(
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -300,7 +319,7 @@ fun PlacePickerScreen(
                             Spacer(Modifier.width(8.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = selectedLocationName ?: "Point sélectionné",
+                                    text = selectedLocationName ?: strings.placePickerSelectedPoint,
                                     style = MaterialTheme.typography.titleMedium,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -313,15 +332,81 @@ fun PlacePickerScreen(
                             }
                         }
 
+                        HorizontalDivider()
+
+                        // Sélecteur de rayon de détection
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = strings.detectionRadiusLabel,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.padding(start = 8.dp)
+                            ) {
+                                Text(
+                                    text = if (selectedRadiusM < 1000f)
+                                        strings.radiusFormatMeters(selectedRadiusM.roundToInt())
+                                    else
+                                        strings.radiusFormatKm(selectedRadiusM / 1000f),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        // Puces de raccourcis rapides (Presets)
+                        val presets = remember(strings) {
+                            listOf(
+                                150f to strings.presetPedestrian,
+                                450f to strings.presetStandard,
+                                1000f to strings.presetBroad,
+                                2500f to strings.presetTransit
+                            )
+                        }
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(presets) { preset ->
+                                val presetRadius = preset.first
+                                val label = preset.second
+                                val isSelected = (selectedRadiusM.roundToInt() == presetRadius.roundToInt())
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { selectedRadiusM = presetRadius },
+                                    label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                                )
+                            }
+                        }
+
+                        // Slider fluide
+                        Slider(
+                            value = selectedRadiusM,
+                            onValueChange = {
+                                selectedRadiusM = ((it / 25f).roundToInt() * 25).toFloat().coerceIn(100f, 3000f)
+                            },
+                            valueRange = 100f..3000f,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
                         Button(
                             onClick = {
                                 val label = selectedLocationName ?: "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
-                                onPlaceSelected(selectedLocation, label, null, null, null)
+                                onPlaceSelected(selectedLocation, label, null, null, null, selectedRadiusM)
                             },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Confirmer ce lieu")
+                            Text(strings.placePickerConfirmButton)
                         }
                     }
                 }
@@ -337,7 +422,7 @@ fun PlacePickerScreen(
                     val label = "À proximité : ${category.displayName}"
                     val ref = if (refType == CategoryReferenceType.COMMUTE_ROUTE) "COMMUTE_ROUTE" else "CURRENT_LOCATION"
                     val loc = currentLocation ?: selectedLocation
-                    onPlaceSelected(loc, label, category.id, ref, commuteDirection.id)
+                    onPlaceSelected(loc, label, category.id, ref, commuteDirection.id, userSettings.poiDetectionRadiusM.toFloat())
                 }
             )
         }

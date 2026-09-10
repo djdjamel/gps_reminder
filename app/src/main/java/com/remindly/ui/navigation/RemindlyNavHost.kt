@@ -104,14 +104,16 @@ fun RemindlyNavHost(
                     val category = savedStateHandle.get<String>("place_category")
                     val categoryRef = savedStateHandle.get<String>("place_category_ref")
                     val commuteDirection = savedStateHandle.get<String>("place_commute_direction")
+                    val radius = savedStateHandle.get<Float>("place_radius")
                     if (lat != 0.0 && lng != 0.0) {
-                        captureViewModel.setPlace(lat, lng, label, category, categoryRef, commuteDirection)
+                        captureViewModel.setPlace(lat, lng, label, category, categoryRef, commuteDirection, radius)
                         savedStateHandle.remove<Double>("place_lat")
                         savedStateHandle.remove<Double>("place_lng")
                         savedStateHandle.remove<String>("place_label")
                         savedStateHandle.remove<String>("place_category")
                         savedStateHandle.remove<String>("place_category_ref")
                         savedStateHandle.remove<String>("place_commute_direction")
+                        savedStateHandle.remove<Float>("place_radius")
                     }
                 }
             }
@@ -138,14 +140,16 @@ fun RemindlyNavHost(
                     val category = savedStateHandle.get<String>("place_category")
                     val categoryRef = savedStateHandle.get<String>("place_category_ref")
                     val commuteDirection = savedStateHandle.get<String>("place_commute_direction")
+                    val radius = savedStateHandle.get<Float>("place_radius")
                     if (lat != 0.0 && lng != 0.0) {
-                        detailViewModel.setPlace(lat, lng, label, category, categoryRef, commuteDirection)
+                        detailViewModel.setPlace(lat, lng, label, category, categoryRef, commuteDirection, radius)
                         savedStateHandle.remove<Double>("place_lat")
                         savedStateHandle.remove<Double>("place_lng")
                         savedStateHandle.remove<String>("place_label")
                         savedStateHandle.remove<String>("place_category")
                         savedStateHandle.remove<String>("place_category_ref")
                         savedStateHandle.remove<String>("place_commute_direction")
+                        savedStateHandle.remove<Float>("place_radius")
                     }
                 }
             }
@@ -163,7 +167,7 @@ fun RemindlyNavHost(
 
         composable(Routes.PlacePicker.route) {
             PlacePickerScreen(
-                onPlaceSelected = { latLng, label, category, categoryRef, commuteDirection ->
+                onPlaceSelected = { latLng, label, category, categoryRef, commuteDirection, radiusM ->
                     navController.previousBackStackEntry?.savedStateHandle?.apply {
                         set("place_lat", latLng.latitude)
                         set("place_lng", latLng.longitude)
@@ -171,6 +175,7 @@ fun RemindlyNavHost(
                         set("place_category", category)
                         set("place_category_ref", categoryRef)
                         set("place_commute_direction", commuteDirection)
+                        set("place_radius", radiusM)
                     }
                     navController.popBackStack()
                 },
@@ -182,7 +187,7 @@ fun RemindlyNavHost(
 
         composable(Routes.PlacePickerFromDetail.route) {
             PlacePickerScreen(
-                onPlaceSelected = { latLng, label, category, categoryRef, commuteDirection ->
+                onPlaceSelected = { latLng, label, category, categoryRef, commuteDirection, radiusM ->
                     navController.previousBackStackEntry?.savedStateHandle?.apply {
                         set("place_lat", latLng.latitude)
                         set("place_lng", latLng.longitude)
@@ -190,6 +195,7 @@ fun RemindlyNavHost(
                         set("place_category", category)
                         set("place_category_ref", categoryRef)
                         set("place_commute_direction", commuteDirection)
+                        set("place_radius", radiusM)
                     }
                     navController.popBackStack()
                 },

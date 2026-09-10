@@ -30,6 +30,7 @@ data class CaptureUiState(
     // Trigger géographique
     val placeLat: Double? = null,
     val placeLng: Double? = null,
+    val placeRadiusM: Float? = null,
     val placeLabel: String? = null,
     val placeCategory: String? = null,
     val categoryRefType: String? = null,
@@ -127,7 +128,8 @@ class CaptureViewModel @Inject constructor(
         label: String?,
         category: String? = null,
         categoryRefType: String? = null,
-        commuteDirection: String? = null
+        commuteDirection: String? = null,
+        radiusM: Float? = null
     ) {
         _uiState.update {
             it.copy(
@@ -136,7 +138,8 @@ class CaptureViewModel @Inject constructor(
                 placeLabel = label ?: "Lieu sélectionné",
                 placeCategory = category,
                 categoryRefType = categoryRefType,
-                commuteDirection = commuteDirection
+                commuteDirection = commuteDirection,
+                placeRadiusM = radiusM
             )
         }
     }
@@ -149,7 +152,8 @@ class CaptureViewModel @Inject constructor(
                 placeLabel = null,
                 placeCategory = null,
                 categoryRefType = null,
-                commuteDirection = null
+                commuteDirection = null,
+                placeRadiusM = null
             )
         }
     }
@@ -209,7 +213,7 @@ class CaptureViewModel @Inject constructor(
                 triggerTimeMillis = state.triggerTimeMillis,
                 placeLat = state.placeLat,
                 placeLng = state.placeLng,
-                placeRadiusM = if (state.placeLat != null) 450f else null,
+                placeRadiusM = if (hasPlace) (state.placeRadiusM ?: 450f) else null,
                 placeLabel = state.placeLabel,
                 placeCategory = state.placeCategory,
                 categoryRefType = state.categoryRefType,

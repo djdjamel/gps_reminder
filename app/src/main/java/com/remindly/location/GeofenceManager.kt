@@ -59,10 +59,10 @@ class GeofenceManager @Inject constructor(
     fun addGeofence(reminder: Reminder) {
         scope.launch {
             try {
+                val settings = settingsRepository.getSettings()
+
                 // 1. Rappel par Catégorie (POI)
                 if (reminder.placeCategory != null) {
-                    val settings = settingsRepository.getSettings()
-
                     // Vérifier si c'est un trajet avec direction RETURN (Au retour : Travail -> Maison)
                     val isCommuteRoute = reminder.categoryRefType == CategoryReferenceType.COMMUTE_ROUTE.id && settings.hasCommuteRoute
                     val isReturnDirection = reminder.commuteDirection == CommuteDirection.RETURN.id
@@ -114,8 +114,8 @@ class GeofenceManager @Inject constructor(
                     // Armement direct des POIs
                     armCategoryPoIs(reminder)
                 } else if (reminder.placeLat != null && reminder.placeLng != null && reminder.placeLat != 0.0 && reminder.placeLng != 0.0) {
-                    // 2. Rappel à adresse fixe unique (Rayon 450m par défaut)
-                    val radius = reminder.placeRadiusM ?: 450f
+                    // 2. Rappel à adresse fixe unique (Rayon personnalisé ou défaut paramètres)
+                    val radius = reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
                     val msg = "Enregistrement géofence unique pour '${reminder.placeLabel ?: "Lieu fixe"}' (${reminder.placeLat}, ${reminder.placeLng}) - Rayon ${radius}m"
                     Log.d(tag, "addGeofence: $msg")
                     appLogger.i("GEOFENCE_ARMED", msg, reminder.id)
@@ -143,7 +143,7 @@ class GeofenceManager @Inject constructor(
                 if (reminder.placeCategory == null) return@launch
                 val category = PlaceCategory.fromId(reminder.placeCategory) ?: return@launch
                 val settings = settingsRepository.getSettings()
-                val detectionRadiusM = settings.poiDetectionRadiusM.toFloat()
+                val detectionRadiusM = reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
 
                 appLogger.i("POI_SEARCH", "Recherche des POIs catégorie '${category.displayName}' (Rayon de détection: ${detectionRadiusM.toInt()}m)", reminder.id)
 

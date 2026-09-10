@@ -31,6 +31,7 @@ data class DetailUiState(
     val triggerTimeMillis: Long? = null,
     val placeLat: Double? = null,
     val placeLng: Double? = null,
+    val placeRadiusM: Float? = null,
     val placeLabel: String? = null,
     val placeCategory: String? = null,
     val categoryRefType: String? = null,
@@ -76,6 +77,7 @@ class DetailViewModel @Inject constructor(
                         triggerTimeMillis = if (it.reminder == null) reminder?.triggerTimeMillis else it.triggerTimeMillis,
                         placeLat = if (it.reminder == null) reminder?.placeLat else it.placeLat,
                         placeLng = if (it.reminder == null) reminder?.placeLng else it.placeLng,
+                        placeRadiusM = if (it.reminder == null) reminder?.placeRadiusM else it.placeRadiusM,
                         placeLabel = if (it.reminder == null) reminder?.placeLabel else it.placeLabel,
                         placeCategory = if (it.reminder == null) reminder?.placeCategory else it.placeCategory,
                         categoryRefType = if (it.reminder == null) reminder?.categoryRefType else it.categoryRefType,
@@ -106,7 +108,8 @@ class DetailViewModel @Inject constructor(
         label: String?,
         category: String? = null,
         categoryRefType: String? = null,
-        commuteDirection: String? = null
+        commuteDirection: String? = null,
+        radiusM: Float? = null
     ) {
         _uiState.update {
             it.copy(
@@ -115,7 +118,8 @@ class DetailViewModel @Inject constructor(
                 placeLabel = label ?: "Lieu sélectionné",
                 placeCategory = category,
                 categoryRefType = categoryRefType,
-                commuteDirection = commuteDirection
+                commuteDirection = commuteDirection,
+                placeRadiusM = radiusM ?: it.placeRadiusM
             )
         }
     }
@@ -128,7 +132,8 @@ class DetailViewModel @Inject constructor(
                 placeLabel = null,
                 placeCategory = null,
                 categoryRefType = null,
-                commuteDirection = null
+                commuteDirection = null,
+                placeRadiusM = null
             )
         }
     }
@@ -176,7 +181,7 @@ class DetailViewModel @Inject constructor(
                 triggerTimeMillis = state.triggerTimeMillis,
                 placeLat = state.placeLat,
                 placeLng = state.placeLng,
-                placeRadiusM = if (state.placeLat != null) (state.reminder?.placeRadiusM ?: 450f) else null,
+                placeRadiusM = if (hasPlace) (state.placeRadiusM ?: state.reminder?.placeRadiusM ?: 450f) else null,
                 placeLabel = state.placeLabel,
                 placeCategory = state.placeCategory,
                 categoryRefType = state.categoryRefType,
