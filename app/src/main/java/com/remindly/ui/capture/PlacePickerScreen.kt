@@ -4,6 +4,7 @@ import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -81,6 +82,7 @@ fun PlacePickerScreen(
     var newPlaceName by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
     var hasAutocentered by remember { mutableStateOf(false) }
+    var isPanelExpanded by remember { mutableStateOf(true) }
 
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(fallbackLocation, 10f)
@@ -138,6 +140,10 @@ fun PlacePickerScreen(
                 GoogleMap(
                     modifier = Modifier.fillMaxSize(),
                     cameraPositionState = cameraPositionState,
+                    contentPadding = PaddingValues(
+                        top = 80.dp,
+                        bottom = if (isPanelExpanded) 280.dp else 120.dp
+                    ),
                     properties = MapProperties(
                         mapType = if (isSatellite) MapType.HYBRID else MapType.NORMAL,
                         isMyLocationEnabled = true
@@ -255,171 +261,292 @@ fun PlacePickerScreen(
                     }
                 }
 
-                // Boutons d'action sur la carte
+                // Conteneur inférieur unifié : Boutons d'action carte + Feuille inférieure (Bottom Sheet)
                 Column(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FloatingActionButton(
-                        onClick = { isSatellite = !isSatellite },
-                        modifier = Modifier.size(48.dp),
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ) {
-                        Icon(
-                            imageVector = if (isSatellite) Icons.Filled.Map else Icons.Filled.Satellite,
-                            contentDescription = "Basculer la vue",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-
-                    FloatingActionButton(
-                        onClick = {
-                            viewModel.checkLocationSettings()
-                            currentLocation?.let { loc ->
-                                selectedLocation = loc
-                                selectedLocationName = null
-                                coroutineScope.launch {
-                                    cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(loc, 16f))
-                                }
-                            }
-                        },
-                        modifier = Modifier.size(48.dp),
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.MyLocation,
-                            contentDescription = "Ma position",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-
-                // Panneau inférieur : Réglage du rayon & Validation du lieu
-                Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
-                        .padding(16.dp),
-                    elevation = CardDefaults.cardElevation(8.dp),
-                    shape = RoundedCornerShape(16.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    // Boutons d'action flottants sur la carte (Satellite + Ma position)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(end = 16.dp, bottom = 10.dp),
+                        horizontalArrangement = Arrangement.End
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalAlignment = Alignment.End
                         ) {
-                            Icon(
-                                Icons.Filled.LocationOn,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = selectedLocationName ?: strings.placePickerSelectedPoint,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        HorizontalDivider()
-
-                        // Sélecteur de rayon de détection
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = strings.detectionRadiusLabel,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.padding(start = 8.dp)
+                            SmallFloatingActionButton(
+                                onClick = { isSatellite = !isSatellite },
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                contentColor = MaterialTheme.colorScheme.primary,
+                                elevation = FloatingActionButtonDefaults.elevation(4.dp)
                             ) {
-                                Text(
-                                    text = if (selectedRadiusM < 1000f)
-                                        strings.radiusFormatMeters(selectedRadiusM.roundToInt())
-                                    else
-                                        strings.radiusFormatKm(selectedRadiusM / 1000f),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                Icon(
+                                    imageVector = if (isSatellite) Icons.Filled.Map else Icons.Filled.Satellite,
+                                    contentDescription = "Basculer la vue"
+                                )
+                            }
+
+                            FloatingActionButton(
+                                onClick = {
+                                    viewModel.checkLocationSettings()
+                                    currentLocation?.let { loc ->
+                                        selectedLocation = loc
+                                        selectedLocationName = null
+                                        coroutineScope.launch {
+                                            cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(loc, 16f))
+                                        }
+                                    }
+                                },
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                contentColor = MaterialTheme.colorScheme.primary,
+                                elevation = FloatingActionButtonDefaults.elevation(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.MyLocation,
+                                    contentDescription = "Ma position"
                                 )
                             }
                         }
+                    }
 
-                        // Puces de raccourcis rapides (Presets)
-                        val presets = remember(strings) {
-                            listOf(
-                                150f to strings.presetPedestrian,
-                                450f to strings.presetStandard,
-                                1000f to strings.presetBroad,
-                                2500f to strings.presetTransit
-                            )
-                        }
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            items(presets) { preset ->
-                                val presetRadius = preset.first
-                                val label = preset.second
-                                val isSelected = (selectedRadiusM.roundToInt() == presetRadius.roundToInt())
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { selectedRadiusM = presetRadius },
-                                    label = { Text(label, style = MaterialTheme.typography.labelSmall) }
-                                )
+                    // Panneau inférieur : Réglage du rayon & Validation du lieu
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .animateContentSize(),
+                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                        tonalElevation = 6.dp,
+                        shadowElevation = 8.dp,
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        if (!isPanelExpanded) {
+                            // ─── Mode compact replié (Surface de carte maximale ~85%) ───
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { isPanelExpanded = true }
+                                        .padding(vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(36.dp)
+                                            .height(4.dp)
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable { isPanelExpanded = true },
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.LocationOn,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                text = selectedLocationName ?: strings.placePickerSelectedPoint,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "Rayon : ${if (selectedRadiusM < 1000f) strings.radiusFormatMeters(selectedRadiusM.roundToInt()) else strings.radiusFormatKm(selectedRadiusM / 1000f)}" +
+                                                        if (selectedActiveFromMillis != null) " • Différé" else "",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(Modifier.width(12.dp))
+
+                                    Button(
+                                        onClick = {
+                                            val label = selectedLocationName ?: "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
+                                            onPlaceSelected(selectedLocation, label, null, null, null, selectedRadiusM, selectedActiveFromMillis)
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(strings.placePickerConfirmButton)
+                                    }
+                                }
                             }
-                        }
+                        } else {
+                            // ─── Mode étendu complet avec réglages optimisés ───
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { isPanelExpanded = false }
+                                        .padding(vertical = 4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(36.dp)
+                                            .height(4.dp)
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                                    )
+                                }
 
-                        // Slider fluide
-                        Slider(
-                            value = selectedRadiusM,
-                            onValueChange = {
-                                selectedRadiusM = ((it / 25f).roundToInt() * 25).toFloat().coerceIn(100f, 3000f)
-                            },
-                            valueRange = 100f..3000f,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        Icons.Filled.LocationOn,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = selectedLocationName ?: strings.placePickerSelectedPoint,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { isPanelExpanded = false },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.KeyboardArrowDown,
+                                            contentDescription = "Réduire",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
 
-                        Spacer(Modifier.height(4.dp))
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
 
-                        // Option 1 : Heure d'activation différée
-                        PlaceActivationTimePicker(
-                            activeFromMillis = selectedActiveFromMillis,
-                            onActiveFromMillisChange = { selectedActiveFromMillis = it }
-                        )
+                                // Sélecteur de rayon de détection
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = strings.detectionRadiusLabel,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        modifier = Modifier.padding(start = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = if (selectedRadiusM < 1000f)
+                                                strings.radiusFormatMeters(selectedRadiusM.roundToInt())
+                                            else
+                                                strings.radiusFormatKm(selectedRadiusM / 1000f),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
 
-                        Spacer(Modifier.height(8.dp))
+                                // Puces de raccourcis rapides (Presets)
+                                val presets = remember(strings) {
+                                    listOf(
+                                        150f to strings.presetPedestrian,
+                                        450f to strings.presetStandard,
+                                        1000f to strings.presetBroad,
+                                        2500f to strings.presetTransit
+                                    )
+                                }
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    contentPadding = PaddingValues(horizontal = 2.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(presets) { preset ->
+                                        val presetRadius = preset.first
+                                        val label = preset.second
+                                        val isSelected = (selectedRadiusM.roundToInt() == presetRadius.roundToInt())
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = { selectedRadiusM = presetRadius },
+                                            label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                                        )
+                                    }
+                                }
 
-                        Button(
-                            onClick = {
-                                val label = selectedLocationName ?: "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
-                                onPlaceSelected(selectedLocation, label, null, null, null, selectedRadiusM, selectedActiveFromMillis)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text(strings.placePickerConfirmButton)
+                                // Slider fluide compact
+                                Slider(
+                                    value = selectedRadiusM,
+                                    onValueChange = {
+                                        selectedRadiusM = ((it / 25f).roundToInt() * 25).toFloat().coerceIn(100f, 3000f)
+                                    },
+                                    valueRange = 100f..3000f,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(32.dp)
+                                )
+
+                                // Option 1 : Heure d'activation différée
+                                PlaceActivationTimePicker(
+                                    activeFromMillis = selectedActiveFromMillis,
+                                    onActiveFromMillisChange = { selectedActiveFromMillis = it }
+                                )
+
+                                Spacer(Modifier.height(2.dp))
+
+                                Button(
+                                    onClick = {
+                                        val label = selectedLocationName ?: "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
+                                        onPlaceSelected(selectedLocation, label, null, null, null, selectedRadiusM, selectedActiveFromMillis)
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(48.dp),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text(strings.placePickerConfirmButton, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
                 }
@@ -682,162 +809,237 @@ private fun PlaceActivationTimePicker(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val strings = LocalAppStrings.current
+    var isExpanded by remember { mutableStateOf(activeFromMillis != null) }
+
+    LaunchedEffect(activeFromMillis) {
+        if (activeFromMillis != null) {
+            isExpanded = true
+        }
+    }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
-            .padding(10.dp)
+            .padding(8.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Filled.Schedule,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = strings.placeActivationTitle,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            if (activeFromMillis != null) {
-                IconButton(
-                    onClick = { onActiveFromMillisChange(null) },
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        Icons.Filled.Close,
-                        contentDescription = strings.placeActivationClear,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(6.dp))
-
-        if (activeFromMillis != null) {
-            val formatted = remember(activeFromMillis) {
-                val sdf = java.text.SimpleDateFormat("dd/MM 'à' HH:mm", java.util.Locale.getDefault())
-                sdf.format(java.util.Date(activeFromMillis))
-            }
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.fillMaxWidth()
+        if (!isExpanded && activeFromMillis == null) {
+            // Mode compact : ligne simple déclencheur
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isExpanded = true }
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        Icons.Filled.CheckCircle,
+                        Icons.Filled.Schedule,
                         contentDescription = null,
-                        modifier = Modifier.size(14.dp),
+                        modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = strings.placeActivationActiveFrom(formatted),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                        text = strings.placeActivationTitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
+                }
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = strings.placeActivationImmediate,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            Icons.Filled.KeyboardArrowDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = strings.placeActivationHint,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         } else {
-            // Puces de sélection rapide
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
+            // Mode ouvert / configuré
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                item {
-                    FilterChip(
-                        selected = true,
-                        onClick = { /* Déjà actif */ },
-                        label = { Text(strings.placeActivationImmediate, style = MaterialTheme.typography.labelSmall) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.Schedule,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = strings.placeActivationTitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
-                item {
-                    AssistChip(
+                if (activeFromMillis != null) {
+                    IconButton(
                         onClick = {
-                            val cal = java.util.Calendar.getInstance().apply {
-                                if (get(java.util.Calendar.HOUR_OF_DAY) >= 18) {
-                                    add(java.util.Calendar.DAY_OF_YEAR, 1)
+                            onActiveFromMillisChange(null)
+                            isExpanded = false
+                        },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = strings.placeActivationClear,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                } else {
+                    IconButton(
+                        onClick = { isExpanded = false },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.KeyboardArrowUp,
+                            contentDescription = "Replier",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            if (activeFromMillis != null) {
+                val formatted = remember(activeFromMillis) {
+                    val sdf = java.text.SimpleDateFormat("dd/MM 'à' HH:mm", java.util.Locale.getDefault())
+                    sdf.format(java.util.Date(activeFromMillis))
+                }
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.CheckCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = strings.placeActivationActiveFrom(formatted),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = strings.placeActivationHint,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                // Puces de sélection rapide
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    item {
+                        FilterChip(
+                            selected = true,
+                            onClick = { isExpanded = false },
+                            label = { Text(strings.placeActivationImmediate, style = MaterialTheme.typography.labelSmall) }
+                        )
+                    }
+                    item {
+                        AssistChip(
+                            onClick = {
+                                val cal = java.util.Calendar.getInstance().apply {
+                                    if (get(java.util.Calendar.HOUR_OF_DAY) >= 18) {
+                                        add(java.util.Calendar.DAY_OF_YEAR, 1)
+                                    }
+                                    set(java.util.Calendar.HOUR_OF_DAY, 18)
+                                    set(java.util.Calendar.MINUTE, 0)
+                                    set(java.util.Calendar.SECOND, 0)
+                                    set(java.util.Calendar.MILLISECOND, 0)
                                 }
-                                set(java.util.Calendar.HOUR_OF_DAY, 18)
-                                set(java.util.Calendar.MINUTE, 0)
-                                set(java.util.Calendar.SECOND, 0)
-                                set(java.util.Calendar.MILLISECOND, 0)
-                            }
-                            onActiveFromMillisChange(cal.timeInMillis)
-                        },
-                        label = { Text(strings.placeActivationThisEvening, style = MaterialTheme.typography.labelSmall) },
-                        leadingIcon = { Icon(Icons.Filled.NightsStay, null, Modifier.size(14.dp)) }
-                    )
-                }
-                item {
-                    AssistChip(
-                        onClick = {
-                            val cal = java.util.Calendar.getInstance().apply {
-                                add(java.util.Calendar.DAY_OF_YEAR, 1)
-                                set(java.util.Calendar.HOUR_OF_DAY, 8)
-                                set(java.util.Calendar.MINUTE, 0)
-                                set(java.util.Calendar.SECOND, 0)
-                                set(java.util.Calendar.MILLISECOND, 0)
-                            }
-                            onActiveFromMillisChange(cal.timeInMillis)
-                        },
-                        label = { Text(strings.placeActivationTomorrowMorning, style = MaterialTheme.typography.labelSmall) },
-                        leadingIcon = { Icon(Icons.Filled.Alarm, null, Modifier.size(14.dp)) }
-                    )
-                }
-                item {
-                    AssistChip(
-                        onClick = {
-                            val cal = java.util.Calendar.getInstance()
-                            android.app.DatePickerDialog(
-                                context,
-                                { _, year, month, dayOfMonth ->
-                                    android.app.TimePickerDialog(
-                                        context,
-                                        { _, hourOfDay, minute ->
-                                            val c = java.util.Calendar.getInstance().apply {
-                                                set(year, month, dayOfMonth, hourOfDay, minute, 0)
-                                                set(java.util.Calendar.MILLISECOND, 0)
-                                            }
-                                            onActiveFromMillisChange(c.timeInMillis)
-                                        },
-                                        cal.get(java.util.Calendar.HOUR_OF_DAY),
-                                        cal.get(java.util.Calendar.MINUTE),
-                                        true
-                                    ).show()
-                                },
-                                cal.get(java.util.Calendar.YEAR),
-                                cal.get(java.util.Calendar.MONTH),
-                                cal.get(java.util.Calendar.DAY_OF_MONTH)
-                            ).show()
-                        },
-                        label = { Text(strings.placeActivationCustomDate, style = MaterialTheme.typography.labelSmall) },
-                        leadingIcon = { Icon(Icons.Filled.CalendarMonth, null, Modifier.size(14.dp)) }
-                    )
+                                onActiveFromMillisChange(cal.timeInMillis)
+                            },
+                            label = { Text(strings.placeActivationThisEvening, style = MaterialTheme.typography.labelSmall) },
+                            leadingIcon = { Icon(Icons.Filled.NightsStay, null, Modifier.size(14.dp)) }
+                        )
+                    }
+                    item {
+                        AssistChip(
+                            onClick = {
+                                val cal = java.util.Calendar.getInstance().apply {
+                                    add(java.util.Calendar.DAY_OF_YEAR, 1)
+                                    set(java.util.Calendar.HOUR_OF_DAY, 8)
+                                    set(java.util.Calendar.MINUTE, 0)
+                                    set(java.util.Calendar.SECOND, 0)
+                                    set(java.util.Calendar.MILLISECOND, 0)
+                                }
+                                onActiveFromMillisChange(cal.timeInMillis)
+                            },
+                            label = { Text(strings.placeActivationTomorrowMorning, style = MaterialTheme.typography.labelSmall) },
+                            leadingIcon = { Icon(Icons.Filled.Alarm, null, Modifier.size(14.dp)) }
+                        )
+                    }
+                    item {
+                        AssistChip(
+                            onClick = {
+                                val cal = java.util.Calendar.getInstance()
+                                android.app.DatePickerDialog(
+                                    context,
+                                    { _, year, month, dayOfMonth ->
+                                        android.app.TimePickerDialog(
+                                            context,
+                                            { _, hourOfDay, minute ->
+                                                val c = java.util.Calendar.getInstance().apply {
+                                                    set(year, month, dayOfMonth, hourOfDay, minute, 0)
+                                                    set(java.util.Calendar.MILLISECOND, 0)
+                                                }
+                                                onActiveFromMillisChange(c.timeInMillis)
+                                            },
+                                            cal.get(java.util.Calendar.HOUR_OF_DAY),
+                                            cal.get(java.util.Calendar.MINUTE),
+                                            true
+                                        ).show()
+                                    },
+                                    cal.get(java.util.Calendar.YEAR),
+                                    cal.get(java.util.Calendar.MONTH),
+                                    cal.get(java.util.Calendar.DAY_OF_MONTH)
+                                ).show()
+                            },
+                            label = { Text(strings.placeActivationCustomDate, style = MaterialTheme.typography.labelSmall) },
+                            leadingIcon = { Icon(Icons.Filled.CalendarMonth, null, Modifier.size(14.dp)) }
+                        )
+                    }
                 }
             }
         }
