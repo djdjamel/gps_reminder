@@ -100,6 +100,10 @@ class SharedReminderSyncManager @Inject constructor(
                 placeLng = r.placeLng,
                 placeRadiusM = r.placeRadiusM,
                 placeLabel = r.placeLabel,
+                placeCategory = r.placeCategory,
+                categoryRefType = r.categoryRefType,
+                commuteDirection = r.commuteDirection,
+                placeActiveFromMillis = r.placeActiveFromMillis,
                 isRepeating = r.isRepeating,
                 syncState = SyncState.SYNCED,
                 sortOrder = existing?.sortOrder ?: 0
@@ -143,7 +147,11 @@ class SharedReminderSyncManager @Inject constructor(
         }
         if (e.triggerType == TriggerType.PLACE || e.triggerType == TriggerType.BOTH) {
             if ((e.placeLat != null && e.placeLng != null) || e.placeCategory != null) {
-                geofenceManager.addGeofence(domain)
+                if (e.placeActiveFromMillis != null && e.placeActiveFromMillis > now) {
+                    alarmScheduler.scheduleDeferredGeofence(domain, e.placeActiveFromMillis)
+                } else {
+                    geofenceManager.addGeofence(domain)
+                }
             }
         }
     }
@@ -163,6 +171,7 @@ class SharedReminderSyncManager @Inject constructor(
         placeCategory = placeCategory,
         categoryRefType = categoryRefType,
         commuteDirection = commuteDirection,
+        placeActiveFromMillis = placeActiveFromMillis,
         isRepeating = isRepeating,
         authorId = authorId,
         authorName = authorName,

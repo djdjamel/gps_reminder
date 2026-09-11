@@ -136,6 +136,7 @@ class FirestoreDataSource @Inject constructor() {
             placeCategory = getString("placeCategory"),
             categoryRefType = getString("categoryRefType"),
             commuteDirection = getString("commuteDirection"),
+            placeActiveFromMillis = getLong("placeActiveFromMillis"),
             isRepeating = getBoolean("isRepeating") ?: false,
             authorId = getString("senderId"),
             authorName = getString("senderName")
@@ -160,6 +161,7 @@ class FirestoreDataSource @Inject constructor() {
             "placeCategory" to reminder.placeCategory,
             "categoryRefType" to reminder.categoryRefType,
             "commuteDirection" to reminder.commuteDirection,
+            "placeActiveFromMillis" to reminder.placeActiveFromMillis,
             "isRepeating" to reminder.isRepeating
         )
         // Use a consistent String ID for Firestore. If reminder.id is 0, generate one, else use it.

@@ -36,6 +36,7 @@ data class DetailUiState(
     val placeCategory: String? = null,
     val categoryRefType: String? = null,
     val commuteDirection: String? = null,
+    val placeActiveFromMillis: Long? = null,
     val isRepeating: Boolean = false,
     val isRecording: Boolean = false,
     val audioPath: String? = null
@@ -83,6 +84,7 @@ class DetailViewModel @Inject constructor(
                         placeCategory = if (it.reminder == null) reminder?.placeCategory else it.placeCategory,
                         categoryRefType = if (it.reminder == null) reminder?.categoryRefType else it.categoryRefType,
                         commuteDirection = if (it.reminder == null) reminder?.commuteDirection else it.commuteDirection,
+                        placeActiveFromMillis = if (it.reminder == null) reminder?.placeActiveFromMillis else it.placeActiveFromMillis,
                         isRepeating = if (it.reminder == null) reminder?.isRepeating ?: false else it.isRepeating,
                         audioPath = it.audioPath
                             ?: reminder?.attachments?.firstOrNull { a -> a.type == AttachmentType.AUDIO }?.localPath
@@ -111,7 +113,8 @@ class DetailViewModel @Inject constructor(
         category: String? = null,
         categoryRefType: String? = null,
         commuteDirection: String? = null,
-        radiusM: Float? = null
+        radiusM: Float? = null,
+        activeFromMillis: Long? = null
     ) {
         _uiState.update {
             it.copy(
@@ -121,7 +124,8 @@ class DetailViewModel @Inject constructor(
                 placeCategory = category,
                 categoryRefType = categoryRefType,
                 commuteDirection = commuteDirection,
-                placeRadiusM = radiusM ?: it.placeRadiusM
+                placeRadiusM = radiusM ?: it.placeRadiusM,
+                placeActiveFromMillis = activeFromMillis ?: it.placeActiveFromMillis
             )
         }
     }
@@ -135,7 +139,8 @@ class DetailViewModel @Inject constructor(
                 placeCategory = null,
                 categoryRefType = null,
                 commuteDirection = null,
-                placeRadiusM = null
+                placeRadiusM = null,
+                placeActiveFromMillis = null
             )
         }
     }
@@ -192,6 +197,7 @@ class DetailViewModel @Inject constructor(
                 placeCategory = state.placeCategory,
                 categoryRefType = state.categoryRefType,
                 commuteDirection = state.commuteDirection,
+                placeActiveFromMillis = state.placeActiveFromMillis,
                 isRepeating = state.isRepeating
             )
             val savedId = reminderRepository.save(reminder)
@@ -217,7 +223,15 @@ class DetailViewModel @Inject constructor(
             if (reminder.triggerType == TriggerType.PLACE || reminder.triggerType == TriggerType.BOTH) {
                 val savedReminder = reminderRepository.getById(savedId)
                 if (savedReminder != null) {
-                    geofenceManager.addGeofence(savedReminder)
+                    val now = System.currentTimeMillis()
+                    if (savedReminder.placeActiveFromMillis != null && savedReminder.placeActiveFromMillis > now) {
+                        // Désarmer l'ancien géofence si l'activation est repoussée dans le futur
+                        geofenceManager.removeGeofence(savedId)
+                        alarmScheduler.scheduleDeferredGeofence(savedReminder, savedReminder.placeActiveFromMillis)
+                        appLogger.i("DEFERRED_GEOFENCE_SCHEDULED", "Armement différé programmé pour ${savedReminder.placeActiveFromMillis}", savedId)
+                    } else {
+                        geofenceManager.addGeofence(savedReminder)
+                    }
                 }
             } else {
                 geofenceManager.removeGeofence(savedId)

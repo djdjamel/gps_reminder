@@ -27,6 +27,9 @@ class AlarmReceiver : BroadcastReceiver() {
     @Inject
     lateinit var geofenceManager: com.remindly.location.GeofenceManager
 
+    @Inject
+    lateinit var appLogger: com.remindly.util.AppLogger
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -40,12 +43,29 @@ class AlarmReceiver : BroadcastReceiver() {
                 val reminder = reminderRepository.getById(reminderId) ?: return@launch
                 if (reminder.status != ReminderStatus.ACTIVE) return@launch
 
-                // Si le rappel a une catégorie de lieu, armer les géofences de POI (fallback temporel)
-                if (reminder.placeCategory != null) {
-                    geofenceManager.armCategoryPoIs(reminder)
+                // 1. Branche réveil silencieux d'activation différée de géofence
+                if (intent.action == AlarmScheduler.ACTION_ARM_DEFERRED_GEOFENCE) {
+                    geofenceManager.addGeofence(reminder)
+                    val armedMsg = "Heure d'activation différée atteinte pour '${reminder.placeLabel ?: "Lieu"}'. Géofence armé avec succès."
+                    android.util.Log.i("AlarmReceiver", armedMsg)
+                    appLogger.success("GEOFENCE_DEFERRED_ARMED", armedMsg, reminderId)
+                    return@launch
                 }
 
-                // 1. Afficher la notification ou jouer l'audio
+                // 2. Branche échéance temporelle standard
+                // Option 2 (Mutual Cancellation) : si le rappel possédait aussi un lieu, désarmer le géofence
+                val hasPlace = (reminder.placeLat != null && reminder.placeLng != null) || reminder.placeCategory != null
+                if (hasPlace) {
+                    val deadlineMsg = "⏰ Échéance temporelle atteinte pour '${reminder.placeLabel ?: "Lieu"}'. Désarmement du géofence."
+                    android.util.Log.i("AlarmReceiver", deadlineMsg)
+                    appLogger.i("DEADLINE_REACHED", deadlineMsg, reminderId)
+                    geofenceManager.removeGeofence(reminderId)
+                    if (!reminder.isRepeating) {
+                        reminderRepository.setStatus(reminderId, ReminderStatus.COMPLETED)
+                    }
+                }
+
+                // 3. Afficher la notification ou jouer l'audio
                 val audioAttachment = reminder.attachments
                     .firstOrNull { it.type == AttachmentType.AUDIO }
 
@@ -68,8 +88,6 @@ class AlarmReceiver : BroadcastReceiver() {
                     val notifier = ReminderNotifier(context)
                     notifier.showTimeReminder(reminder)
                 }
-
-                // Notification affichée / alarme jouée - le rappel reste actif jusqu'à action de l'utilisateur
             } finally {
                 pendingResult.finish()
             }

@@ -4,6 +4,7 @@ import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,9 +40,10 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlacePickerScreen(
-    onPlaceSelected: (LatLng, String?, String?, String?, String?, Float) -> Unit,
+    onPlaceSelected: (LatLng, String?, String?, String?, String?, Float, Long?) -> Unit,
     onNavigateBack: () -> Unit,
     initialRadiusM: Float? = null,
+    initialActiveFromMillis: Long? = null,
     viewModel: PlacePickerViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -96,6 +98,7 @@ fun PlacePickerScreen(
 
     val strings = LocalAppStrings.current
     var selectedRadiusM by remember { mutableFloatStateOf(initialRadiusM ?: userSettings.poiDetectionRadiusM.toFloat()) }
+    var selectedActiveFromMillis by remember { mutableStateOf(initialActiveFromMillis) }
 
     LaunchedEffect(userSettings.poiDetectionRadiusM) {
         if (initialRadiusM == null && selectedRadiusM == 450f && userSettings.poiDetectionRadiusM != 450) {
@@ -398,10 +401,20 @@ fun PlacePickerScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
 
+                        Spacer(Modifier.height(4.dp))
+
+                        // Option 1 : Heure d'activation différée
+                        PlaceActivationTimePicker(
+                            activeFromMillis = selectedActiveFromMillis,
+                            onActiveFromMillisChange = { selectedActiveFromMillis = it }
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+
                         Button(
                             onClick = {
                                 val label = selectedLocationName ?: "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
-                                onPlaceSelected(selectedLocation, label, null, null, null, selectedRadiusM)
+                                onPlaceSelected(selectedLocation, label, null, null, null, selectedRadiusM, selectedActiveFromMillis)
                             },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp)
@@ -418,11 +431,13 @@ fun PlacePickerScreen(
                     .fillMaxSize()
                     .padding(paddingValues),
                 userSettings = userSettings,
-                onCategoryConfirmed = { category, refType, commuteDirection ->
+                activeFromMillis = selectedActiveFromMillis,
+                onActiveFromMillisChange = { selectedActiveFromMillis = it },
+                onCategoryConfirmed = { category, refType, commuteDirection, activeFromMillis ->
                     val label = "À proximité : ${category.displayName}"
                     val ref = if (refType == CategoryReferenceType.COMMUTE_ROUTE) "COMMUTE_ROUTE" else "CURRENT_LOCATION"
                     val loc = currentLocation ?: selectedLocation
-                    onPlaceSelected(loc, label, category.id, ref, commuteDirection.id, userSettings.poiDetectionRadiusM.toFloat())
+                    onPlaceSelected(loc, label, category.id, ref, commuteDirection.id, userSettings.poiDetectionRadiusM.toFloat(), activeFromMillis)
                 }
             )
         }
@@ -433,7 +448,9 @@ fun PlacePickerScreen(
 private fun CategoryPickerTab(
     modifier: Modifier = Modifier,
     userSettings: com.remindly.data.settings.VoiceAlarmSettings,
-    onCategoryConfirmed: (PlaceCategory, CategoryReferenceType, CommuteDirection) -> Unit
+    activeFromMillis: Long?,
+    onActiveFromMillisChange: (Long?) -> Unit,
+    onCategoryConfirmed: (PlaceCategory, CategoryReferenceType, CommuteDirection, Long?) -> Unit
 ) {
     var selectedCategory by remember { mutableStateOf(PlaceCategory.SUPERMARKET) }
     var selectedRefType by remember { mutableStateOf(CategoryReferenceType.CURRENT_LOCATION) }
@@ -639,12 +656,190 @@ private fun CategoryPickerTab(
 
         Spacer(Modifier.height(8.dp))
 
+        // Option 1 : Heure d'activation différée
+        PlaceActivationTimePicker(
+            activeFromMillis = activeFromMillis,
+            onActiveFromMillisChange = onActiveFromMillisChange
+        )
+
+        Spacer(Modifier.height(8.dp))
+
         Button(
-            onClick = { onCategoryConfirmed(selectedCategory, selectedRefType, selectedDirection) },
+            onClick = { onCategoryConfirmed(selectedCategory, selectedRefType, selectedDirection, activeFromMillis) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
         ) {
             Text("Confirmer cette catégorie (${selectedCategory.displayName})")
+        }
+    }
+}
+
+@Composable
+private fun PlaceActivationTimePicker(
+    activeFromMillis: Long?,
+    onActiveFromMillisChange: (Long?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val strings = LocalAppStrings.current
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .padding(10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Schedule,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = strings.placeActivationTitle,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            if (activeFromMillis != null) {
+                IconButton(
+                    onClick = { onActiveFromMillisChange(null) },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = strings.placeActivationClear,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+
+        if (activeFromMillis != null) {
+            val formatted = remember(activeFromMillis) {
+                val sdf = java.text.SimpleDateFormat("dd/MM 'à' HH:mm", java.util.Locale.getDefault())
+                sdf.format(java.util.Date(activeFromMillis))
+            }
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = strings.placeActivationActiveFrom(formatted),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = strings.placeActivationHint,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            // Puces de sélection rapide
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                item {
+                    FilterChip(
+                        selected = true,
+                        onClick = { /* Déjà actif */ },
+                        label = { Text(strings.placeActivationImmediate, style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+                item {
+                    AssistChip(
+                        onClick = {
+                            val cal = java.util.Calendar.getInstance().apply {
+                                if (get(java.util.Calendar.HOUR_OF_DAY) >= 18) {
+                                    add(java.util.Calendar.DAY_OF_YEAR, 1)
+                                }
+                                set(java.util.Calendar.HOUR_OF_DAY, 18)
+                                set(java.util.Calendar.MINUTE, 0)
+                                set(java.util.Calendar.SECOND, 0)
+                                set(java.util.Calendar.MILLISECOND, 0)
+                            }
+                            onActiveFromMillisChange(cal.timeInMillis)
+                        },
+                        label = { Text(strings.placeActivationThisEvening, style = MaterialTheme.typography.labelSmall) },
+                        leadingIcon = { Icon(Icons.Filled.NightsStay, null, Modifier.size(14.dp)) }
+                    )
+                }
+                item {
+                    AssistChip(
+                        onClick = {
+                            val cal = java.util.Calendar.getInstance().apply {
+                                add(java.util.Calendar.DAY_OF_YEAR, 1)
+                                set(java.util.Calendar.HOUR_OF_DAY, 8)
+                                set(java.util.Calendar.MINUTE, 0)
+                                set(java.util.Calendar.SECOND, 0)
+                                set(java.util.Calendar.MILLISECOND, 0)
+                            }
+                            onActiveFromMillisChange(cal.timeInMillis)
+                        },
+                        label = { Text(strings.placeActivationTomorrowMorning, style = MaterialTheme.typography.labelSmall) },
+                        leadingIcon = { Icon(Icons.Filled.Alarm, null, Modifier.size(14.dp)) }
+                    )
+                }
+                item {
+                    AssistChip(
+                        onClick = {
+                            val cal = java.util.Calendar.getInstance()
+                            android.app.DatePickerDialog(
+                                context,
+                                { _, year, month, dayOfMonth ->
+                                    android.app.TimePickerDialog(
+                                        context,
+                                        { _, hourOfDay, minute ->
+                                            val c = java.util.Calendar.getInstance().apply {
+                                                set(year, month, dayOfMonth, hourOfDay, minute, 0)
+                                                set(java.util.Calendar.MILLISECOND, 0)
+                                            }
+                                            onActiveFromMillisChange(c.timeInMillis)
+                                        },
+                                        cal.get(java.util.Calendar.HOUR_OF_DAY),
+                                        cal.get(java.util.Calendar.MINUTE),
+                                        true
+                                    ).show()
+                                },
+                                cal.get(java.util.Calendar.YEAR),
+                                cal.get(java.util.Calendar.MONTH),
+                                cal.get(java.util.Calendar.DAY_OF_MONTH)
+                            ).show()
+                        },
+                        label = { Text(strings.placeActivationCustomDate, style = MaterialTheme.typography.labelSmall) },
+                        leadingIcon = { Icon(Icons.Filled.CalendarMonth, null, Modifier.size(14.dp)) }
+                    )
+                }
+            }
         }
     }
 }

@@ -31,6 +31,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     lateinit var geofenceManager: GeofenceManager
 
     @Inject
+    lateinit var alarmScheduler: com.remindly.time.AlarmScheduler
+
+    @Inject
     lateinit var settingsRepository: VoiceAlarmSettingsRepository
 
     @Inject
@@ -148,6 +151,14 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
                         val reminder = reminderRepository.getById(reminderId) ?: continue
 
+                        // Option 1 : Garde-fou d'activation différée (ne sonne qu'à partir de l'heure choisie)
+                        if (reminder.placeActiveFromMillis != null && System.currentTimeMillis() < reminder.placeActiveFromMillis) {
+                            val suppressMsg = "🚫 Alerte de lieu ignorée : l'heure d'activation différée n'est pas encore atteinte (${reminder.placeActiveFromMillis}) pour rappel #${reminder.id}"
+                            android.util.Log.i("GeofenceReceiver", suppressMsg)
+                            appLogger.i("GEOFENCE_SUPPRESSED", suppressMsg, reminderId)
+                            continue
+                        }
+
                         val detectedPlaceName = prefs.getString("place_name_${geofence.requestId}", null) ?: if (geofence.requestId.contains("__")) {
                             try {
                                 val encoded = geofence.requestId.substringAfter("__")
@@ -248,6 +259,14 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 status = if (reminder.isRepeating) ReminderStatus.ACTIVE else ReminderStatus.COMPLETED
                             )
                             reminderRepository.save(updatedReminder)
+
+                            // Option 2 (Mutual Cancellation) : Le lieu s'étant déclenché, annuler l'alarme d'échéance programmée
+                            if (reminder.triggerType == com.remindly.domain.model.TriggerType.BOTH || reminder.triggerTimeMillis != null) {
+                                alarmScheduler.cancel(reminderId)
+                                val cancelMsg = "Arrivée au lieu validée : alarme d'échéance annulée pour rappel #$reminderId"
+                                android.util.Log.i("GeofenceReceiver", cancelMsg)
+                                appLogger.i("MUTUAL_CANCELLATION", cancelMsg, reminderId)
+                            }
 
                             if (reminder.isRepeating) {
                                 // Mode HABITUDE / RÉPÉTITIF :

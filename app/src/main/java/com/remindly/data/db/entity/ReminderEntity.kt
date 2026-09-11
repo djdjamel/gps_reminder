@@ -39,6 +39,7 @@ data class ReminderEntity(
     val placeCategory: String? = null,
     val categoryRefType: String? = null,
     val commuteDirection: String? = null,
+    val placeActiveFromMillis: Long? = null,
     
     val syncState: SyncState = SyncState.SYNCED,
     val sortOrder: Int = 0

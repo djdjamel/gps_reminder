@@ -160,4 +160,65 @@ object GeofenceFilterUtils {
             actualDistanceM = actualDistanceM
         )
     }
+
+    data class DeferredActivationResult(
+        val isActivated: Boolean,
+        val reason: String
+    )
+
+    /**
+     * Évalue si un rappel avec lieu est déjà actif temporellement ("Au lieu, à partir de cette heure").
+     */
+    fun evaluateDeferredActivation(
+        placeActiveFromMillis: Long?,
+        currentTimeMillis: Long
+    ): DeferredActivationResult {
+        if (placeActiveFromMillis == null) {
+            return DeferredActivationResult(isActivated = true, reason = "Pas de restriction temporelle d'activation")
+        }
+        return if (currentTimeMillis >= placeActiveFromMillis) {
+            DeferredActivationResult(isActivated = true, reason = "Heure d'activation atteinte")
+        } else {
+            DeferredActivationResult(isActivated = false, reason = "Heure d'activation non encore atteinte (prévue à $placeActiveFromMillis)")
+        }
+    }
+
+    enum class TriggerEventSource {
+        GEOFENCE_ENTER,
+        ALARM_DEADLINE
+    }
+
+    data class MutualCancellationResult(
+        val shouldCancelAlarm: Boolean,
+        val shouldRemoveGeofence: Boolean,
+        val shouldCompleteReminder: Boolean
+    )
+
+    /**
+     * Détermine les actions de désarmement mutuel pour un rappel combiné (Lieu OU Échéance).
+     */
+    fun evaluateMutualCancellation(
+        hasPlace: Boolean,
+        hasDeadline: Boolean,
+        isRepeating: Boolean,
+        source: TriggerEventSource
+    ): MutualCancellationResult {
+        val isCombined = hasPlace && hasDeadline
+        return when (source) {
+            TriggerEventSource.GEOFENCE_ENTER -> {
+                MutualCancellationResult(
+                    shouldCancelAlarm = isCombined,
+                    shouldRemoveGeofence = !isRepeating,
+                    shouldCompleteReminder = !isRepeating
+                )
+            }
+            TriggerEventSource.ALARM_DEADLINE -> {
+                MutualCancellationResult(
+                    shouldCancelAlarm = false,
+                    shouldRemoveGeofence = isCombined,
+                    shouldCompleteReminder = !isRepeating
+                )
+            }
+        }
+    }
 }

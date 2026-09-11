@@ -489,6 +489,33 @@ fun ReminderItem(
                                 }
                             }
                         }
+
+                        // Badge Activation Différée (Option 1)
+                        if (reminder.placeActiveFromMillis != null && reminder.placeActiveFromMillis > System.currentTimeMillis()) {
+                            val timeText = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(reminder.placeActiveFromMillis))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Schedule,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(10.dp),
+                                        tint = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                    Spacer(Modifier.width(2.dp))
+                                    Text(
+                                        text = strings.waitingUntilBadge(timeText),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -507,6 +534,16 @@ fun ReminderItem(
                             Icon(Icons.Filled.AccessTime, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(2.dp))
                             Text(timeText, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+
+                    // Déclencheur combiné (Option 2 : Lieu OU Échéance)
+                    val hasPlace = (reminder.placeLat != null && reminder.placeLng != null) || reminder.placeCategory != null
+                    if (hasPlace && reminder.triggerTimeMillis != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Bolt, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
+                            Spacer(Modifier.width(2.dp))
+                            Text(strings.combinedTriggerBadge, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                         }
                     }
 

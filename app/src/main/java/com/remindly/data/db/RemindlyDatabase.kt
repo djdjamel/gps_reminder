@@ -16,6 +16,9 @@ import com.remindly.data.db.entity.ReminderLogEntity
 import com.remindly.data.db.entity.SavedPlaceEntity
 import com.remindly.data.db.entity.SharedListEntity
 
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+
 @Database(
     entities = [
         ReminderEntity::class,
@@ -25,7 +28,7 @@ import com.remindly.data.db.entity.SharedListEntity
         CollaboratorEntity::class,
         ReminderLogEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -36,4 +39,12 @@ abstract class RemindlyDatabase : RoomDatabase() {
     abstract fun sharedListDao(): SharedListDao
     abstract fun collaboratorDao(): CollaboratorDao
     abstract fun reminderLogDao(): ReminderLogDao
+
+    companion object {
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE reminders ADD COLUMN placeActiveFromMillis INTEGER DEFAULT NULL")
+            }
+        }
+    }
 }

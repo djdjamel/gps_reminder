@@ -18,6 +18,7 @@ data class Reminder(
     val placeCategory: String? = null,
     val categoryRefType: String? = null,
     val commuteDirection: String? = null,
+    val placeActiveFromMillis: Long? = null,
     val isRepeating: Boolean = false,
     val sortOrder: Int = 0,
     // Collaboration

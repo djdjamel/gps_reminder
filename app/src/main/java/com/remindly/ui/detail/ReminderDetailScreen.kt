@@ -157,7 +157,11 @@ fun ReminderDetailScreen(
 
                     // Chip Lieu
                     val radiusSuffix = uiState.placeRadiusM?.let { r -> if (r < 1000f) " • ${r.toInt()}m" else " • ${String.format(java.util.Locale.ROOT, "%.1f", r / 1000f)}km" } ?: ""
-                    val placeLabel = (uiState.placeLabel ?: strings.setPlace) + radiusSuffix
+                    val activeFromSuffix = uiState.placeActiveFromMillis?.let { t ->
+                        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+                        " • Dès ${sdf.format(Date(t))}"
+                    } ?: ""
+                    val placeLabel = (uiState.placeLabel ?: strings.setPlace) + radiusSuffix + activeFromSuffix
                     FilterChip(
                         selected = hasPlace,
                         onClick = { onNavigateToPlacePicker() },
@@ -185,6 +189,43 @@ fun ReminderDetailScreen(
                         label = { Text(strings.addImage) },
                         leadingIcon = { Icon(Icons.Filled.Image, null, Modifier.size(18.dp)) }
                     )
+                }
+
+                // Bannière explicative Option 2 (Déclenchement au premier événement)
+                if (hasPlace && uiState.triggerTimeMillis != null) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Filled.Bolt,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.secondary
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = strings.combinedTriggerBadge,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Text(
+                                    text = strings.combinedTriggerExplanation,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // ── Fréquence du rappel (Lieu : Une seule fois vs Habitude) ──

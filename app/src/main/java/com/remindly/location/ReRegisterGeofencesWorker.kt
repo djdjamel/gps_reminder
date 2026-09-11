@@ -24,7 +24,11 @@ class ReRegisterGeofencesWorker @AssistedInject constructor(
                 (it.placeLat != null && it.placeLng != null) || it.placeCategory != null 
             }
             
+            val now = System.currentTimeMillis()
             for (reminder in locationReminders) {
+                if (reminder.placeActiveFromMillis != null && reminder.placeActiveFromMillis > now) {
+                    continue
+                }
                 geofenceManager.addGeofence(reminder)
             }
 

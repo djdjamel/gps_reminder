@@ -42,6 +42,15 @@ class RescheduleAlarmsWorker @AssistedInject constructor(
                     }
                 }
             }
+
+            // Reprogrammer les alarmes d'activation différée de géofence
+            val deferredReminders = activeReminders.filter {
+                it.placeActiveFromMillis != null && it.placeActiveFromMillis > now
+            }
+            for (reminder in deferredReminders) {
+                alarmScheduler.scheduleDeferredGeofence(reminder, reminder.placeActiveFromMillis!!)
+            }
+
             Result.success()
         } catch (e: Exception) {
             e.printStackTrace()

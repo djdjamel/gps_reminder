@@ -351,6 +351,8 @@ fun QuickCaptureSheet(
 
             Spacer(Modifier.height(6.dp))
 
+            val hasPlace = uiState.placeLat != null || uiState.placeCategory != null
+
             // ── Chips de configuration ──
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -401,9 +403,12 @@ fun QuickCaptureSheet(
                 )
 
                 // Chip Lieu
-                val hasPlace = uiState.placeLat != null || uiState.placeCategory != null
                 val radiusSuffix = uiState.placeRadiusM?.let { r -> if (r < 1000f) " • ${r.toInt()}m" else " • ${String.format(java.util.Locale.ROOT, "%.1f", r / 1000f)}km" } ?: ""
-                val placeLabel = (uiState.placeLabel ?: strings.addPlaceChip) + radiusSuffix
+                val activeFromSuffix = uiState.placeActiveFromMillis?.let { t ->
+                    val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+                    " • Dès ${sdf.format(Date(t))}"
+                } ?: ""
+                val placeLabel = (uiState.placeLabel ?: strings.addPlaceChip) + radiusSuffix + activeFromSuffix
                 FilterChip(
                     selected = hasPlace,
                     onClick = { onNavigateToPlacePicker() },
@@ -431,6 +436,43 @@ fun QuickCaptureSheet(
                     label = { Text(if (uiState.imageUris.isEmpty()) strings.photoChipEmpty else strings.photoChipCount(uiState.imageUris.size)) },
                     leadingIcon = { Icon(Icons.Filled.Image, null, Modifier.size(18.dp)) }
                 )
+            }
+
+            // Bannière explicative Option 2 (Déclenchement au premier événement)
+            if (hasPlace && uiState.triggerTimeMillis != null) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Bolt,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.secondary
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = strings.combinedTriggerBadge,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                text = strings.combinedTriggerExplanation,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                }
             }
 
             // ── Aperçu des images sélectionnées ──

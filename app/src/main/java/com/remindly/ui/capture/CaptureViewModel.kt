@@ -32,6 +32,7 @@ data class CaptureUiState(
     val placeCategory: String? = null,
     val categoryRefType: String? = null,
     val commuteDirection: String? = null,
+    val placeActiveFromMillis: Long? = null,
     // Médias
     val imageUris: List<Uri> = emptyList(),
     val audioPath: String? = null,
@@ -143,7 +144,8 @@ class CaptureViewModel @Inject constructor(
         category: String? = null,
         categoryRefType: String? = null,
         commuteDirection: String? = null,
-        radiusM: Float? = null
+        radiusM: Float? = null,
+        activeFromMillis: Long? = null
     ) {
         _uiState.update {
             it.copy(
@@ -153,7 +155,8 @@ class CaptureViewModel @Inject constructor(
                 placeCategory = category,
                 categoryRefType = categoryRefType,
                 commuteDirection = commuteDirection,
-                placeRadiusM = radiusM
+                placeRadiusM = radiusM,
+                placeActiveFromMillis = activeFromMillis
             )
         }
     }
@@ -167,7 +170,8 @@ class CaptureViewModel @Inject constructor(
                 placeCategory = null,
                 categoryRefType = null,
                 commuteDirection = null,
-                placeRadiusM = null
+                placeRadiusM = null,
+                placeActiveFromMillis = null
             )
         }
     }
@@ -281,6 +285,7 @@ class CaptureViewModel @Inject constructor(
                 placeCategory = state.placeCategory,
                 categoryRefType = state.categoryRefType,
                 commuteDirection = state.commuteDirection,
+                placeActiveFromMillis = state.placeActiveFromMillis,
                 isRepeating = state.isRepeating
             )
             
@@ -342,7 +347,15 @@ class CaptureViewModel @Inject constructor(
                 if (reminder.triggerType == TriggerType.PLACE || reminder.triggerType == TriggerType.BOTH) {
                     val savedReminder = reminderRepository.getById(reminderId)
                     if (savedReminder != null) {
-                        geofenceManager.addGeofence(savedReminder)
+                        val now = System.currentTimeMillis()
+                        if (savedReminder.placeActiveFromMillis != null && savedReminder.placeActiveFromMillis > now) {
+                            // Option 1 : Réveil différé silencieux pour armer le géofence plus tard
+                            alarmScheduler.scheduleDeferredGeofence(savedReminder, savedReminder.placeActiveFromMillis)
+                            appLogger.i("DEFERRED_GEOFENCE_SCHEDULED", "Armement différé programmé pour ${savedReminder.placeActiveFromMillis}", reminderId)
+                        } else {
+                            // Armement immédiat
+                            geofenceManager.addGeofence(savedReminder)
+                        }
                     }
                 }
 

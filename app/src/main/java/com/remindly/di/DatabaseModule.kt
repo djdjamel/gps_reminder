@@ -28,6 +28,7 @@ object DatabaseModule {
             RemindlyDatabase::class.java,
             "remindly_db"
         )
+        .addMigrations(RemindlyDatabase.MIGRATION_6_7)
         .fallbackToDestructiveMigration()
         .build()
     }
