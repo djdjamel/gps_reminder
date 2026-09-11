@@ -36,6 +36,7 @@ data class DetailUiState(
     val placeCategory: String? = null,
     val categoryRefType: String? = null,
     val commuteDirection: String? = null,
+    val isRepeating: Boolean = false,
     val isRecording: Boolean = false,
     val audioPath: String? = null
 )
@@ -82,6 +83,7 @@ class DetailViewModel @Inject constructor(
                         placeCategory = if (it.reminder == null) reminder?.placeCategory else it.placeCategory,
                         categoryRefType = if (it.reminder == null) reminder?.categoryRefType else it.categoryRefType,
                         commuteDirection = if (it.reminder == null) reminder?.commuteDirection else it.commuteDirection,
+                        isRepeating = if (it.reminder == null) reminder?.isRepeating ?: false else it.isRepeating,
                         audioPath = it.audioPath
                             ?: reminder?.attachments?.firstOrNull { a -> a.type == AttachmentType.AUDIO }?.localPath
                     )
@@ -138,6 +140,10 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    fun setIsRepeating(repeating: Boolean) {
+        _uiState.update { it.copy(isRepeating = repeating) }
+    }
+
     fun addImage(uri: Uri) {
         viewModelScope.launch {
             val localPath = attachmentStore.copyImageToStorage(uri) ?: return@launch
@@ -185,7 +191,8 @@ class DetailViewModel @Inject constructor(
                 placeLabel = state.placeLabel,
                 placeCategory = state.placeCategory,
                 categoryRefType = state.categoryRefType,
-                commuteDirection = state.commuteDirection
+                commuteDirection = state.commuteDirection,
+                isRepeating = state.isRepeating
             )
             val savedId = reminderRepository.save(reminder)
             appLogger.i(

@@ -100,6 +100,7 @@ class SharedReminderSyncManager @Inject constructor(
                 placeLng = r.placeLng,
                 placeRadiusM = r.placeRadiusM,
                 placeLabel = r.placeLabel,
+                isRepeating = r.isRepeating,
                 syncState = SyncState.SYNCED,
                 sortOrder = existing?.sortOrder ?: 0
             )
@@ -162,6 +163,7 @@ class SharedReminderSyncManager @Inject constructor(
         placeCategory = placeCategory,
         categoryRefType = categoryRefType,
         commuteDirection = commuteDirection,
+        isRepeating = isRepeating,
         authorId = authorId,
         authorName = authorName,
         remoteId = remoteId

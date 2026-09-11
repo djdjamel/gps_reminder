@@ -244,17 +244,34 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             }
 
                             val updatedReminder = reminder.copy(
-                                placeLabel = detectedPlaceName ?: reminder.placeLabel
+                                placeLabel = detectedPlaceName ?: reminder.placeLabel,
+                                status = if (reminder.isRepeating) ReminderStatus.ACTIVE else ReminderStatus.COMPLETED
                             )
                             reminderRepository.save(updatedReminder)
 
-                            // Désarmement UNIQUEMENT du lieu spécifique franchi pour laisser les autres commerces de la catégorie actifs
-                            geofenceManager.removeSingleGeofence(geofence.requestId)
-                            prefs.edit()
-                                .remove("place_name_${geofence.requestId}")
-                                .remove("place_lat_${geofence.requestId}")
-                                .remove("place_lng_${geofence.requestId}")
-                                .apply()
+                            if (reminder.isRepeating) {
+                                // Mode HABITUDE / RÉPÉTITIF :
+                                // On maintient le geofence armé pour les prochains passages.
+                                // Le cooldown (last_trigger_time_${reminderId}) évite que ça sonne en boucle tant qu'on reste sur place.
+                                appLogger.i(
+                                    "HABIT_KEPT_ACTIVE",
+                                    "Rappel récurrent/habitude #${reminder.id} maintenu ACTIF pour les prochains passages.",
+                                    reminderId
+                                )
+                            } else {
+                                // Mode UNE SEULE FOIS :
+                                // Clôture et désarmement de la géofence
+                                if (reminder.placeCategory == null) {
+                                    geofenceManager.removeGeofence(reminderId)
+                                } else {
+                                    geofenceManager.removeSingleGeofence(geofence.requestId)
+                                }
+                                prefs.edit()
+                                    .remove("place_name_${geofence.requestId}")
+                                    .remove("place_lat_${geofence.requestId}")
+                                    .remove("place_lng_${geofence.requestId}")
+                                    .apply()
+                            }
                         }
                     }
                 } catch (e: Exception) {

@@ -9,9 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -150,6 +148,10 @@ fun HomeScreen(
                 }
             }
         } else {
+            LaunchedEffect(Unit) {
+                viewModel.refreshLocation()
+            }
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -158,26 +160,35 @@ fun HomeScreen(
             ) {
                 uiState.sections.forEach { section ->
                     // En-tête de section
-                    item(key = "header_${section.dateMillis}") {
+                    item(key = "header_${section.dateMillis}_${section.title}") {
                         SectionHeader(
                             title = section.title,
-                            remainingCount = section.remainingCount
+                            remainingCount = section.remainingCount,
+                            isNearbySection = section.isNearbySection
                         )
                     }
 
                     // Rappels de la section
                     items(
                         items = section.reminders,
-                        key = { it.id }
+                        key = { "${section.dateMillis}_${it.id}" }
                     ) { reminder ->
+                        val audioAttachment = reminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
                         ReminderItem(
                             reminder = reminder,
+                            userLocation = uiState.userLocation,
+                            isPlayingAudio = uiState.playingReminderId == reminder.id,
                             onCheckedChange = { isChecked ->
                                 viewModel.onReminderCompleted(reminder.id, isChecked)
                             },
                             onClick = { onNavigateToDetail(reminder.id) },
                             onMoveUp = { viewModel.moveUp(reminder) },
-                            onMoveDown = { viewModel.moveDown(reminder) }
+                            onMoveDown = { viewModel.moveDown(reminder) },
+                            onToggleAudio = {
+                                if (audioAttachment != null) {
+                                    viewModel.playAudio(reminder.id, audioAttachment.localPath)
+                                }
+                            }
                         )
                     }
                 }
@@ -288,7 +299,14 @@ fun HomeScreen(
 }
 
 @Composable
-fun SectionHeader(title: String, remainingCount: Int) {
+fun SectionHeader(
+    title: String,
+    remainingCount: Int,
+    isNearbySection: Boolean = false
+) {
+    val icon = if (isNearbySection) Icons.Filled.NearMe else Icons.Filled.CalendarToday
+    val tint = if (isNearbySection) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -296,21 +314,24 @@ fun SectionHeader(title: String, remainingCount: Int) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            Icons.Filled.CalendarToday,
+            icon,
             contentDescription = null,
             modifier = Modifier.size(18.dp),
-            tint = MaterialTheme.colorScheme.primary
+            tint = tint
         )
         Spacer(Modifier.width(8.dp))
         Text(
             text = title,
             style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary
+            fontWeight = FontWeight.Bold,
+            color = tint
         )
         Spacer(Modifier.weight(1f))
         if (remainingCount > 0) {
-            Badge(containerColor = MaterialTheme.colorScheme.primaryContainer) {
+            Badge(
+                containerColor = if (isNearbySection) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer,
+                contentColor = if (isNearbySection) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
+            ) {
                 Text("$remainingCount")
             }
         }
@@ -325,16 +346,33 @@ fun SectionHeader(title: String, remainingCount: Int) {
 @Composable
 fun ReminderItem(
     reminder: Reminder,
+    userLocation: android.location.Location?,
+    isPlayingAudio: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     onClick: () -> Unit,
     onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit
+    onMoveDown: () -> Unit,
+    onToggleAudio: () -> Unit
 ) {
     val strings = LocalAppStrings.current
     val isCompleted = reminder.status == ReminderStatus.COMPLETED
 
-    // Première image jointe (pour la miniature)
     val firstImage = reminder.attachments.firstOrNull { it.type == AttachmentType.IMAGE }
+    val audioAttachment = reminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
+
+    val distanceText: String? = remember(reminder.placeLat, reminder.placeLng, userLocation) {
+        if (userLocation != null && reminder.placeLat != null && reminder.placeLng != null) {
+            val results = FloatArray(1)
+            android.location.Location.distanceBetween(
+                userLocation.latitude, userLocation.longitude,
+                reminder.placeLat, reminder.placeLng,
+                results
+            )
+            val d = results[0]
+            if (d < 1000f) strings.distanceMeters(d.toInt())
+            else strings.distanceKm(d / 1000f)
+        } else null
+    }
 
     Card(
         modifier = Modifier
@@ -372,27 +410,85 @@ fun ReminderItem(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                // Nom du lieu détecté ou configuré
-                if (!reminder.placeLabel.isNullOrBlank()) {
+                // Nom du lieu détecté ou configuré + Badge de distance + Badge Habitude
+                if (!reminder.placeLabel.isNullOrBlank() || distanceText != null) {
                     Row(
                         modifier = Modifier.padding(top = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(
-                            Icons.Filled.Place,
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(Modifier.width(2.dp))
-                        Text(
-                            text = reminder.placeLabel,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        if (!reminder.placeLabel.isNullOrBlank()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Filled.Place,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(13.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(Modifier.width(2.dp))
+                                Text(
+                                    text = reminder.placeLabel,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        // Badge de distance en temps réel
+                        if (distanceText != null) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Filled.NearMe,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(10.dp),
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                    Spacer(Modifier.width(2.dp))
+                                    Text(
+                                        text = distanceText,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
+                            }
+                        }
+
+                        // Badge Habitude / Répété
+                        if (reminder.isRepeating) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Repeat,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(10.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(Modifier.width(2.dp))
+                                    Text(
+                                        text = strings.repeatingBadge,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -414,8 +510,8 @@ fun ReminderItem(
                         }
                     }
 
-                    // Lieu
-                    if (reminder.triggerType == TriggerType.PLACE || reminder.triggerType == TriggerType.BOTH) {
+                    // Lieu (si pas déjà affiché via placeLabel)
+                    if ((reminder.triggerType == TriggerType.PLACE || reminder.triggerType == TriggerType.BOTH) && reminder.placeLabel.isNullOrBlank()) {
                         Icon(Icons.Filled.LocationOn, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
                     }
 
@@ -434,12 +530,31 @@ fun ReminderItem(
                             }
                         }
                     }
+                }
+            }
 
-                    // Audio
-                    if (reminder.attachments.any { it.type == AttachmentType.AUDIO }) {
-                        Icon(Icons.Filled.Mic, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.tertiary)
+            // Bouton Lecture Audio Directe
+            if (audioAttachment != null) {
+                IconButton(
+                    onClick = onToggleAudio,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isPlayingAudio) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (isPlayingAudio) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+                                contentDescription = if (isPlayingAudio) strings.audioStopTooltip else strings.audioPlayTooltip,
+                                modifier = Modifier.size(18.dp),
+                                tint = if (isPlayingAudio) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
                     }
                 }
+                Spacer(Modifier.width(4.dp))
             }
 
             // Miniature d'image (si présente)

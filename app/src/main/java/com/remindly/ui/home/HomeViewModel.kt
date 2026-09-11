@@ -1,23 +1,26 @@
 package com.remindly.ui.home
 
+import android.content.Context
+import android.location.Location
+import android.media.MediaPlayer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import com.google.firebase.auth.FirebaseUser
+import com.remindly.auth.AuthManager
+import com.remindly.auth.WorkspaceManager
+import com.remindly.data.db.entity.CollaboratorEntity
+import com.remindly.data.repo.CollaboratorRepository
 import com.remindly.data.repo.ReminderRepository
 import com.remindly.domain.model.Reminder
 import com.remindly.domain.model.ReminderStatus
 import com.remindly.domain.model.TriggerType
-import com.remindly.time.AlarmScheduler
-import com.remindly.auth.WorkspaceManager
-import com.remindly.auth.AuthManager
-import com.remindly.data.repo.CollaboratorRepository
-import com.remindly.data.db.entity.CollaboratorEntity
 import com.remindly.location.GeofenceManager
-import com.google.firebase.auth.FirebaseUser
+import com.remindly.time.AlarmScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -27,13 +30,16 @@ data class ReminderSection(
     val title: String,
     val dateMillis: Long,
     val remainingCount: Int,
-    val reminders: List<Reminder>
+    val reminders: List<Reminder>,
+    val isNearbySection: Boolean = false
 )
 
 data class HomeUiState(
     val sections: List<ReminderSection> = emptyList(),
     val isLoading: Boolean = true,
-    val allReminders: List<Reminder> = emptyList() // flat list for reorder
+    val allReminders: List<Reminder> = emptyList(), // flat list for reorder
+    val userLocation: Location? = null,
+    val playingReminderId: Long? = null
 )
 
 @HiltViewModel
@@ -43,11 +49,40 @@ class HomeViewModel @Inject constructor(
     private val geofenceManager: GeofenceManager,
     private val workspaceManager: WorkspaceManager,
     private val authManager: AuthManager,
-    private val collaboratorRepository: CollaboratorRepository
+    private val collaboratorRepository: CollaboratorRepository,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    val currentUser: StateFlow<FirebaseUser?> = authManager.currentUserState
+    private val fusedLocationClient: FusedLocationProviderClient =
+        LocationServices.getFusedLocationProviderClient(context)
 
+    private val _currentLocation = MutableStateFlow<Location?>(null)
+    val currentLocation: StateFlow<Location?> = _currentLocation.asStateFlow()
+
+    private val _playingReminderId = MutableStateFlow<Long?>(null)
+    val playingReminderId: StateFlow<Long?> = _playingReminderId.asStateFlow()
+
+    private var mediaPlayer: MediaPlayer? = null
+
+    init {
+        refreshLocation()
+    }
+
+    fun refreshLocation() {
+        try {
+            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                if (loc != null) {
+                    _currentLocation.value = loc
+                }
+            }
+        } catch (e: SecurityException) {
+            // Permission non accordée
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    val currentUser: StateFlow<FirebaseUser?> = authManager.currentUserState
 
     fun signOut() {
         authManager.signOut()
@@ -76,17 +111,72 @@ class HomeViewModel @Inject constructor(
         workspaceManager.switchToCollaboratorWorkspace(email)
     }
 
-    val uiState: StateFlow<HomeUiState> = reminderRepository.observePersonalActive()
-        .map { reminders -> buildSections(reminders) }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = HomeUiState(isLoading = true)
-        )
+    val uiState: StateFlow<HomeUiState> = combine(
+        reminderRepository.observePersonalActive(),
+        _currentLocation,
+        _playingReminderId
+    ) { reminders, loc, playingId ->
+        buildSections(reminders, loc, playingId)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = HomeUiState(isLoading = true)
+    )
 
-    private fun buildSections(reminders: List<Reminder>): HomeUiState {
-        if (reminders.isEmpty()) return HomeUiState(sections = emptyList(), isLoading = false, allReminders = emptyList())
+    private fun buildSections(
+        reminders: List<Reminder>,
+        userLoc: Location?,
+        playingId: Long?
+    ): HomeUiState {
+        if (reminders.isEmpty()) {
+            return HomeUiState(
+                sections = emptyList(),
+                isLoading = false,
+                allReminders = emptyList(),
+                userLocation = userLoc,
+                playingReminderId = playingId
+            )
+        }
 
+        val allSections = mutableListOf<ReminderSection>()
+
+        // 1. Détection des rappels à proximité immédiate (< 2000m / 2 km)
+        if (userLoc != null) {
+            val nearbyReminders = reminders.filter { r ->
+                if (r.status != ReminderStatus.ACTIVE) return@filter false
+                if (r.placeLat != null && r.placeLng != null) {
+                    val dist = FloatArray(1)
+                    Location.distanceBetween(
+                        userLoc.latitude, userLoc.longitude,
+                        r.placeLat, r.placeLng,
+                        dist
+                    )
+                    dist[0] < 2000f
+                } else false
+            }.sortedBy { r ->
+                val dist = FloatArray(1)
+                Location.distanceBetween(
+                    userLoc.latitude, userLoc.longitude,
+                    r.placeLat!!, r.placeLng!!,
+                    dist
+                )
+                dist[0]
+            }
+
+            if (nearbyReminders.isNotEmpty()) {
+                allSections.add(
+                    ReminderSection(
+                        title = "🎯 À proximité en ce moment (< 2 km)",
+                        dateMillis = Long.MAX_VALUE,
+                        remainingCount = nearbyReminders.size,
+                        reminders = nearbyReminders,
+                        isNearbySection = true
+                    )
+                )
+            }
+        }
+
+        // 2. Sections temporelles habituelles (par jour de création)
         val calendar = Calendar.getInstance()
         val todayStart = calendar.apply {
             set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
@@ -96,15 +186,14 @@ class HomeViewModel @Inject constructor(
         val yesterdayStart = todayStart - 24 * 60 * 60 * 1000L
         val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.FRANCE)
 
-        // Grouper par jour de création
         val grouped = reminders.groupBy { reminder ->
             val cal = Calendar.getInstance().apply { timeInMillis = reminder.createdAt }
             cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0)
             cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
             cal.timeInMillis
-        }.toSortedMap(compareByDescending { it }) // plus récent en premier
+        }.toSortedMap(compareByDescending { it })
 
-        val sections = grouped.map { (dayMillis, dayReminders) ->
+        for ((dayMillis, dayReminders) in grouped) {
             val activeCount = dayReminders.count { it.status == ReminderStatus.ACTIVE }
             val title = when {
                 dayMillis >= todayStart -> "Aujourd'hui"
@@ -114,15 +203,67 @@ class HomeViewModel @Inject constructor(
                     if (activeCount > 0) "$dateStr — $activeCount tâche(s) restante(s)" else dateStr
                 }
             }
-            ReminderSection(
-                title = title,
-                dateMillis = dayMillis,
-                remainingCount = activeCount,
-                reminders = dayReminders
+            allSections.add(
+                ReminderSection(
+                    title = title,
+                    dateMillis = dayMillis,
+                    remainingCount = activeCount,
+                    reminders = dayReminders,
+                    isNearbySection = false
+                )
             )
         }
 
-        return HomeUiState(sections = sections, isLoading = false, allReminders = reminders)
+        return HomeUiState(
+            sections = allSections,
+            isLoading = false,
+            allReminders = reminders,
+            userLocation = userLoc,
+            playingReminderId = playingId
+        )
+    }
+
+    fun playAudio(reminderId: Long, localPath: String) {
+        if (_playingReminderId.value == reminderId) {
+            stopAudio()
+            return
+        }
+
+        stopAudio()
+        try {
+            val player = MediaPlayer().apply {
+                setDataSource(localPath)
+                setOnCompletionListener {
+                    _playingReminderId.value = null
+                    it.release()
+                    mediaPlayer = null
+                }
+                prepare()
+                start()
+            }
+            mediaPlayer = player
+            _playingReminderId.value = reminderId
+        } catch (e: Exception) {
+            e.printStackTrace()
+            _playingReminderId.value = null
+        }
+    }
+
+    fun stopAudio() {
+        try {
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            mediaPlayer = null
+            _playingReminderId.value = null
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopAudio()
     }
 
     fun onReminderCompleted(id: Long, isCompleted: Boolean) {

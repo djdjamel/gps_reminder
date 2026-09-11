@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -102,6 +103,8 @@ fun ReminderDetailScreen(
 
                 Spacer(Modifier.height(12.dp))
 
+                val hasPlace = uiState.placeLat != null || uiState.placeCategory != null
+
                 // ── Chips de configuration ──
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -153,7 +156,6 @@ fun ReminderDetailScreen(
                     )
 
                     // Chip Lieu
-                    val hasPlace = uiState.placeLat != null || uiState.placeCategory != null
                     val radiusSuffix = uiState.placeRadiusM?.let { r -> if (r < 1000f) " • ${r.toInt()}m" else " • ${String.format(java.util.Locale.ROOT, "%.1f", r / 1000f)}km" } ?: ""
                     val placeLabel = (uiState.placeLabel ?: strings.setPlace) + radiusSuffix
                     FilterChip(
@@ -183,6 +185,97 @@ fun ReminderDetailScreen(
                         label = { Text(strings.addImage) },
                         leadingIcon = { Icon(Icons.Filled.Image, null, Modifier.size(18.dp)) }
                     )
+                }
+
+                // ── Fréquence du rappel (Lieu : Une seule fois vs Habitude) ──
+                if (hasPlace) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = strings.recurrenceSectionTitle,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(6.dp))
+
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            // Option 1 : Une seule fois
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.setIsRepeating(false) }
+                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = !uiState.isRepeating,
+                                    onClick = { viewModel.setIsRepeating(false) }
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = strings.recurrenceOnce,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (!uiState.isRepeating) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                    Text(
+                                        text = strings.recurrenceOnceSubtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                                thickness = 0.5.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant
+                            )
+
+                            // Option 2 : À chaque passage (Habitude)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.setIsRepeating(true) }
+                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = uiState.isRepeating,
+                                    onClick = { viewModel.setIsRepeating(true) }
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = strings.recurrenceHabit,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = if (uiState.isRepeating) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Icon(
+                                            Icons.Filled.Repeat,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    Text(
+                                        text = strings.recurrenceHabitSubtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // ── Images jointes ──

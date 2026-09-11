@@ -206,7 +206,150 @@ fun QuickCaptureSheet(
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
+
+            // ── Raccourcis ultra-rapides en 1 clic ──
+            val savedPlaces by viewModel.savedPlaces.collectAsStateWithLifecycle()
+            val settings by viewModel.settings.collectAsStateWithLifecycle()
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Bolt,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = strings.quickShortcutsTitle,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp)
+            ) {
+                // 1. Lieux favoris (Maison / Travail ou lieux enregistrés dans Room)
+                if (savedPlaces.isNotEmpty()) {
+                    items(savedPlaces) { place ->
+                        val isSelected = uiState.placeLat == place.latitude && uiState.placeLng == place.longitude
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                if (isSelected) viewModel.clearPlace()
+                                else viewModel.applySavedPlace(place)
+                            },
+                            label = { Text(place.name) },
+                            leadingIcon = {
+                                val icon = if (place.name.contains("maison", ignoreCase = true) || place.name.contains("home", ignoreCase = true) || place.name.contains("منزل", ignoreCase = true)) {
+                                    Icons.Filled.Home
+                                } else if (place.name.contains("travail", ignoreCase = true) || place.name.contains("work", ignoreCase = true) || place.name.contains("عمل", ignoreCase = true)) {
+                                    Icons.Filled.Work
+                                } else {
+                                    Icons.Filled.Place
+                                }
+                                Icon(icon, null, Modifier.size(16.dp))
+                            }
+                        )
+                    }
+                } else {
+                    // Si pas de SavedPlace Room enregistré mais commute configuré dans settings
+                    if (settings.commuteStartLat != null && settings.commuteStartLng != null) {
+                        val isSelected = uiState.placeLat == settings.commuteStartLat && uiState.placeLng == settings.commuteStartLng
+                        item {
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    if (isSelected) viewModel.clearPlace()
+                                    else viewModel.setPlace(
+                                        settings.commuteStartLat!!,
+                                        settings.commuteStartLng!!,
+                                        settings.commuteStartLabel ?: strings.shortcutHome,
+                                        radiusM = settings.poiDetectionRadiusM.toFloat()
+                                    )
+                                },
+                                label = { Text(settings.commuteStartLabel ?: strings.shortcutHome) },
+                                leadingIcon = { Icon(Icons.Filled.Home, null, Modifier.size(16.dp)) }
+                            )
+                        }
+                    }
+                    if (settings.commuteEndLat != null && settings.commuteEndLng != null) {
+                        val isSelected = uiState.placeLat == settings.commuteEndLat && uiState.placeLng == settings.commuteEndLng
+                        item {
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    if (isSelected) viewModel.clearPlace()
+                                    else viewModel.setPlace(
+                                        settings.commuteEndLat!!,
+                                        settings.commuteEndLng!!,
+                                        settings.commuteEndLabel ?: strings.shortcutWork,
+                                        radiusM = settings.poiDetectionRadiusM.toFloat()
+                                    )
+                                },
+                                label = { Text(settings.commuteEndLabel ?: strings.shortcutWork) },
+                                leadingIcon = { Icon(Icons.Filled.Work, null, Modifier.size(16.dp)) }
+                            )
+                        }
+                    }
+                }
+
+                // 2. Raccourcis Catégories fréquentes (Supérette, Pharmacie)
+                item {
+                    val isSupermarket = uiState.placeCategory == "supermarket"
+                    FilterChip(
+                        selected = isSupermarket,
+                        onClick = {
+                            if (isSupermarket) viewModel.clearPlace()
+                            else viewModel.applyCategoryShortcut("supermarket", strings.shortcutSupermarket)
+                        },
+                        label = { Text(strings.shortcutSupermarket) },
+                        leadingIcon = { Icon(Icons.Filled.ShoppingCart, null, Modifier.size(16.dp)) }
+                    )
+                }
+
+                item {
+                    val isPharmacy = uiState.placeCategory == "pharmacy"
+                    FilterChip(
+                        selected = isPharmacy,
+                        onClick = {
+                            if (isPharmacy) viewModel.clearPlace()
+                            else viewModel.applyCategoryShortcut("pharmacy", strings.shortcutPharmacy)
+                        },
+                        label = { Text(strings.shortcutPharmacy) },
+                        leadingIcon = { Icon(Icons.Filled.LocalPharmacy, null, Modifier.size(16.dp)) }
+                    )
+                }
+
+                // 3. Raccourcis Temporels rapides (Ce soir 19h, Demain 8h30)
+                item {
+                    AssistChip(
+                        onClick = { viewModel.applyThisEveningShortcut() },
+                        label = { Text(strings.shortcutThisEvening) },
+                        leadingIcon = { Icon(Icons.Filled.NightsStay, null, Modifier.size(16.dp)) }
+                    )
+                }
+
+                item {
+                    AssistChip(
+                        onClick = { viewModel.applyTomorrowMorningShortcut() },
+                        label = { Text(strings.shortcutTomorrowMorning) },
+                        leadingIcon = { Icon(Icons.Filled.Alarm, null, Modifier.size(16.dp)) }
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(6.dp))
 
             // ── Chips de configuration ──
             FlowRow(

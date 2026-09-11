@@ -15,10 +15,7 @@ import com.remindly.media.AudioRecorderManager
 import com.remindly.time.AlarmScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -39,6 +36,7 @@ data class CaptureUiState(
     val imageUris: List<Uri> = emptyList(),
     val audioPath: String? = null,
     val isRecording: Boolean = false,
+    val isRepeating: Boolean = false,
     val errorMessage: String? = null,
     val voiceFeedbackMessage: String? = null
 )
@@ -49,12 +47,28 @@ class CaptureViewModel @Inject constructor(
     private val attachmentStore: AttachmentStore,
     private val alarmScheduler: AlarmScheduler,
     private val geofenceManager: GeofenceManager,
+    private val savedPlaceRepository: com.remindly.data.repo.SavedPlaceRepository,
+    private val settingsRepository: com.remindly.data.settings.VoiceAlarmSettingsRepository,
     private val appLogger: com.remindly.util.AppLogger,
     @ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CaptureUiState())
     val uiState: StateFlow<CaptureUiState> = _uiState.asStateFlow()
+
+    val savedPlaces: StateFlow<List<com.remindly.domain.model.SavedPlace>> = savedPlaceRepository.observeAll()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    val settings: StateFlow<com.remindly.data.settings.VoiceAlarmSettings> = settingsRepository.settingsFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = com.remindly.data.settings.VoiceAlarmSettings()
+        )
 
     private val audioRecorder = AudioRecorderManager(context)
 
@@ -158,6 +172,55 @@ class CaptureViewModel @Inject constructor(
         }
     }
 
+    fun applySavedPlace(savedPlace: com.remindly.domain.model.SavedPlace) {
+        setPlace(
+            lat = savedPlace.latitude,
+            lng = savedPlace.longitude,
+            label = savedPlace.name,
+            radiusM = savedPlace.radiusMeters
+        )
+    }
+
+    fun applyCategoryShortcut(category: String, defaultLabel: String) {
+        val defaultRadius = settings.value.poiDetectionRadiusM.toFloat()
+        setPlace(
+            lat = 0.0,
+            lng = 0.0,
+            label = defaultLabel,
+            category = category,
+            categoryRefType = "AROUND_ME",
+            radiusM = defaultRadius
+        )
+    }
+
+    fun applyThisEveningShortcut() {
+        val cal = java.util.Calendar.getInstance().apply {
+            if (get(java.util.Calendar.HOUR_OF_DAY) >= 19) {
+                add(java.util.Calendar.DAY_OF_YEAR, 1)
+            }
+            set(java.util.Calendar.HOUR_OF_DAY, 19)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        setTriggerTime(cal.timeInMillis)
+    }
+
+    fun applyTomorrowMorningShortcut() {
+        val cal = java.util.Calendar.getInstance().apply {
+            add(java.util.Calendar.DAY_OF_YEAR, 1)
+            set(java.util.Calendar.HOUR_OF_DAY, 8)
+            set(java.util.Calendar.MINUTE, 30)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        setTriggerTime(cal.timeInMillis)
+    }
+
+    fun setIsRepeating(repeating: Boolean) {
+        _uiState.update { it.copy(isRepeating = repeating) }
+    }
+
     fun addImage(uri: Uri) {
         _uiState.update { it.copy(imageUris = it.imageUris + uri) }
     }
@@ -217,7 +280,8 @@ class CaptureViewModel @Inject constructor(
                 placeLabel = state.placeLabel,
                 placeCategory = state.placeCategory,
                 categoryRefType = state.categoryRefType,
-                commuteDirection = state.commuteDirection
+                commuteDirection = state.commuteDirection,
+                isRepeating = state.isRepeating
             )
             
             try {
