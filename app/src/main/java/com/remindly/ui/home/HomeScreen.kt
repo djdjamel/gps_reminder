@@ -343,6 +343,7 @@ fun SectionHeader(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ReminderItem(
     reminder: Reminder,
@@ -410,7 +411,7 @@ fun ReminderItem(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                // Nom du lieu détecté ou configuré + Badge de distance + Badge Habitude
+                // Ligne 1 : Nom du lieu détecté ou configuré + Badge de distance en temps réel
                 if (!reminder.placeLabel.isNullOrBlank() || distanceText != null) {
                     Row(
                         modifier = Modifier.padding(top = 2.dp),
@@ -418,7 +419,10 @@ fun ReminderItem(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         if (!reminder.placeLabel.isNullOrBlank()) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f, fill = false)
+                            ) {
                                 Icon(
                                     Icons.Filled.Place,
                                     contentDescription = null,
@@ -458,60 +462,8 @@ fun ReminderItem(
                                         text = distanceText,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
                                         color = MaterialTheme.colorScheme.onSecondaryContainer
-                                    )
-                                }
-                            }
-                        }
-
-                        // Badge Habitude / Répété
-                        if (reminder.isRepeating) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Repeat,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(10.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                    Spacer(Modifier.width(2.dp))
-                                    Text(
-                                        text = strings.repeatingBadge,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
-
-                        // Badge Activation Différée (Option 1)
-                        if (reminder.placeActiveFromMillis != null && reminder.placeActiveFromMillis > System.currentTimeMillis()) {
-                            val timeText = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(reminder.placeActiveFromMillis))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Filled.Schedule,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(10.dp),
-                                        tint = MaterialTheme.colorScheme.onTertiaryContainer
-                                    )
-                                    Spacer(Modifier.width(2.dp))
-                                    Text(
-                                        text = strings.waitingUntilBadge(timeText),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onTertiaryContainer
                                     )
                                 }
                             }
@@ -519,31 +471,104 @@ fun ReminderItem(
                     }
                 }
 
-                // Indicateurs (icônes seules, compactes)
-                Row(
+                // Ligne 2 : Badges de statut & Déclencheurs (FlowRow : pas de déformation verticale)
+                FlowRow(
                     modifier = Modifier.padding(top = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // Heure
+                    // Badge Activation Différée (Option 1)
+                    if (reminder.placeActiveFromMillis != null && reminder.placeActiveFromMillis > System.currentTimeMillis()) {
+                        val timeText = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(reminder.placeActiveFromMillis))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.Schedule,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(11.dp),
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Spacer(Modifier.width(3.dp))
+                                Text(
+                                    text = strings.waitingUntilBadge(timeText),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                        }
+                    }
+
+                    // Badge Habitude / Répété
+                    if (reminder.isRepeating) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.Repeat,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(10.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(Modifier.width(2.dp))
+                                Text(
+                                    text = strings.repeatingBadge,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+
+                    // Heure d'échéance
                     if (reminder.triggerType == TriggerType.TIME || reminder.triggerType == TriggerType.BOTH) {
                         val timeText = reminder.triggerTimeMillis?.let {
                             SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(it))
                         } ?: ""
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.AccessTime, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(2.dp))
-                            Text(timeText, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.AccessTime, null, Modifier.size(11.dp), tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(3.dp))
+                                Text(timeText, style = MaterialTheme.typography.labelSmall, maxLines = 1, color = MaterialTheme.colorScheme.primary)
+                            }
                         }
                     }
 
                     // Déclencheur combiné (Option 2 : Lieu OU Échéance)
-                    val hasPlace = (reminder.placeLat != null && reminder.placeLng != null) || reminder.placeCategory != null
+                    val hasPlace = (!reminder.placeLabel.isNullOrBlank()) || (reminder.placeLat != null && reminder.placeLng != null) || reminder.placeCategory != null
                     if (hasPlace && reminder.triggerTimeMillis != null) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Bolt, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
-                            Spacer(Modifier.width(2.dp))
-                            Text(strings.combinedTriggerBadge, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.Bolt, null, Modifier.size(11.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                Spacer(Modifier.width(3.dp))
+                                Text(strings.combinedTriggerBadge, style = MaterialTheme.typography.labelSmall, maxLines = 1, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            }
                         }
                     }
 
@@ -553,18 +578,16 @@ fun ReminderItem(
                     }
 
                     // Image
-                    if (reminder.attachments.any { it.type == AttachmentType.IMAGE }) {
+                    if (reminder.attachments.any { it.type == AttachmentType.IMAGE } && firstImage == null) {
                         Icon(Icons.Filled.Image, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.tertiary)
                     }
 
                     // Auteur / Collaborateur
-                    if (reminder.authorId != null) {
+                    if (reminder.authorId != null && reminder.authorName != null) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Person, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
-                            if (reminder.authorName != null) {
-                                Spacer(Modifier.width(2.dp))
-                                Text(reminder.authorName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                            }
+                            Icon(Icons.Filled.Person, null, Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(2.dp))
+                            Text(reminder.authorName, style = MaterialTheme.typography.labelSmall, maxLines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }

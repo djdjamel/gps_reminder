@@ -405,7 +405,11 @@ fun QuickCaptureSheet(
                 // Chip Lieu
                 val radiusSuffix = uiState.placeRadiusM?.let { r -> if (r < 1000f) " • ${r.toInt()}m" else " • ${String.format(java.util.Locale.ROOT, "%.1f", r / 1000f)}km" } ?: ""
                 val activeFromSuffix = uiState.placeActiveFromMillis?.let { t ->
-                    val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+                    val calNow = Calendar.getInstance()
+                    val calTarget = Calendar.getInstance().apply { timeInMillis = t }
+                    val isSameDay = calNow.get(Calendar.YEAR) == calTarget.get(Calendar.YEAR) &&
+                            calNow.get(Calendar.DAY_OF_YEAR) == calTarget.get(Calendar.DAY_OF_YEAR)
+                    val sdf = if (isSameDay) SimpleDateFormat("HH:mm", Locale.getDefault()) else SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
                     " • Dès ${sdf.format(Date(t))}"
                 } ?: ""
                 val placeLabel = (uiState.placeLabel ?: strings.addPlaceChip) + radiusSuffix + activeFromSuffix

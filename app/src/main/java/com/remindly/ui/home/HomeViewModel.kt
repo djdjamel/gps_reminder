@@ -142,8 +142,10 @@ class HomeViewModel @Inject constructor(
 
         // 1. Détection des rappels à proximité immédiate (< 2000m / 2 km)
         if (userLoc != null) {
+            val now = System.currentTimeMillis()
             val nearbyReminders = reminders.filter { r ->
                 if (r.status != ReminderStatus.ACTIVE) return@filter false
+                if (r.placeActiveFromMillis != null && r.placeActiveFromMillis > now) return@filter false
                 if (r.placeLat != null && r.placeLng != null) {
                     val dist = FloatArray(1)
                     Location.distanceBetween(
