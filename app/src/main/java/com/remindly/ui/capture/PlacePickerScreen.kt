@@ -1,6 +1,7 @@
 package com.remindly.ui.capture
 
 import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -11,7 +12,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -20,6 +23,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -35,6 +40,7 @@ import com.remindly.domain.model.CategoryReferenceType
 import com.remindly.domain.model.CommuteDirection
 import com.remindly.domain.model.PlaceCategory
 import com.remindly.ui.theme.LocalAppStrings
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -78,17 +84,37 @@ fun PlacePickerScreen(
     var selectedLocationName by remember { mutableStateOf<String?>(null) }
 
     var isSatellite by remember { mutableStateOf(false) }
-    var showSaveDialog by remember { mutableStateOf(false) }
-    var newPlaceName by remember { mutableStateOf("") }
-    var isSearchActive by remember { mutableStateOf(false) }
+    var isSearchExpanded by remember { mutableStateOf(false) }
     var hasAutocentered by remember { mutableStateOf(false) }
     var isPanelExpanded by remember { mutableStateOf(true) }
 
+    val focusRequester = remember { FocusRequester() }
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(fallbackLocation, 10f)
     }
 
     val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(isSearchExpanded) {
+        if (isSearchExpanded) {
+            delay(100)
+            try {
+                focusRequester.requestFocus()
+            } catch (_: Exception) {}
+        }
+    }
+
+    BackHandler(enabled = isSearchExpanded) {
+        isSearchExpanded = false
+        viewModel.updateSearchQuery("")
+    }
+
+    LaunchedEffect(selectedTabIndex) {
+        if (selectedTabIndex != 0) {
+            isSearchExpanded = false
+            viewModel.updateSearchQuery("")
+        }
+    }
 
     LaunchedEffect(currentLocation) {
         if (!hasAutocentered && currentLocation != null) {
@@ -108,361 +134,211 @@ fun PlacePickerScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            Column {
-                TopAppBar(
-                    title = { Text(strings.placePickerTitle) },
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = strings.back)
-                        }
-                    }
-                )
-                TabRow(selectedTabIndex = selectedTabIndex) {
-                    Tab(
-                        selected = selectedTabIndex == 0,
-                        onClick = { selectedTabIndex = 0 },
-                        text = { Text(strings.placePickerTabMap) }
-                    )
-                    Tab(
-                        selected = selectedTabIndex == 1,
-                        onClick = { selectedTabIndex = 1 },
-                        text = { Text(strings.placePickerTabCategory) }
-                    )
-                }
-            }
-        }
-    ) { paddingValues ->
+    Box(modifier = Modifier.fillMaxSize()) {
         if (selectedTabIndex == 0) {
-            // ─── Onglet 1 : Carte classique ──────────────────────────────────
-            Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-                GoogleMap(
-                    modifier = Modifier.fillMaxSize(),
-                    cameraPositionState = cameraPositionState,
-                    contentPadding = PaddingValues(
-                        top = 80.dp,
-                        bottom = if (isPanelExpanded) 280.dp else 120.dp
-                    ),
-                    properties = MapProperties(
-                        mapType = if (isSatellite) MapType.HYBRID else MapType.NORMAL,
-                        isMyLocationEnabled = true
-                    ),
-                    uiSettings = MapUiSettings(
-                        zoomControlsEnabled = false,
-                        myLocationButtonEnabled = false,
-                        compassEnabled = true
-                    ),
-                    onMapClick = { latLng ->
-                        selectedLocation = latLng
-                        selectedLocationName = null
+            // ─── Onglet 1 : Carte classique plein écran ──────────────────────────
+            GoogleMap(
+                modifier = Modifier.fillMaxSize(),
+                cameraPositionState = cameraPositionState,
+                contentPadding = PaddingValues(
+                    top = 72.dp,
+                    bottom = if (isPanelExpanded) 190.dp else 70.dp
+                ),
+                properties = MapProperties(
+                    mapType = if (isSatellite) MapType.HYBRID else MapType.NORMAL,
+                    isMyLocationEnabled = true
+                ),
+                uiSettings = MapUiSettings(
+                    zoomControlsEnabled = false,
+                    myLocationButtonEnabled = false,
+                    compassEnabled = true
+                ),
+                onMapClick = { latLng ->
+                    selectedLocation = latLng
+                    selectedLocationName = null
+                    if (isSearchExpanded) {
+                        isSearchExpanded = false
+                        viewModel.updateSearchQuery("")
                     }
-                ) {
-                    Marker(
-                        state = MarkerState(position = selectedLocation),
-                        title = selectedLocationName ?: strings.placePickerSelectedPoint,
-                        snippet = "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
-                    )
-                    Circle(
-                        center = selectedLocation,
-                        radius = selectedRadiusM.toDouble(),
-                        fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
-                        strokeColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                        strokeWidth = 4f
-                    )
                 }
+            ) {
+                Marker(
+                    state = MarkerState(position = selectedLocation),
+                    title = selectedLocationName ?: strings.placePickerSelectedPoint
+                )
+                Circle(
+                    center = selectedLocation,
+                    radius = selectedRadiusM.toDouble(),
+                    fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                    strokeColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    strokeWidth = 4f
+                )
+            }
 
-                // Barre de recherche
-                Column(
+            // Conteneur inférieur unifié : Boutons d'action carte + Panneau inférieur
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+            ) {
+                // Boutons d'action flottants sur la carte (Satellite + Ma position)
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .align(Alignment.TopCenter)
+                        .padding(end = 16.dp, bottom = 10.dp),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    SearchBar(
-                        query = uiState.searchQuery,
-                        onQueryChange = viewModel::updateSearchQuery,
-                        onSearch = { isSearchActive = false },
-                        active = isSearchActive,
-                        onActiveChange = { isSearchActive = it },
-                        placeholder = { Text("Rechercher une adresse, un commerce…") },
-                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                        trailingIcon = {
-                            if (uiState.searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                    Icon(Icons.Filled.Close, contentDescription = "Effacer")
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalAlignment = Alignment.End
                     ) {
-                        if (uiState.isSearching) {
-                            Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                            }
-                        }
-
-                        LazyColumn {
-                            items(uiState.predictions) { prediction ->
-                                ListItem(
-                                    headlineContent = {
-                                        Text(prediction.getPrimaryText(null).toString())
-                                    },
-                                    supportingContent = {
-                                        Text(
-                                            prediction.getSecondaryText(null).toString(),
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
-                                    },
-                                    leadingContent = {
-                                        Icon(Icons.Filled.LocationOn, contentDescription = null)
-                                    },
-                                    modifier = Modifier.clickable {
-                                        viewModel.selectPrediction(prediction.placeId) { latLng, name ->
-                                            selectedLocation = latLng
-                                            selectedLocationName = name
-                                            isSearchActive = false
-                                            coroutineScope.launch {
-                                                cameraPositionState.animate(
-                                                    CameraUpdateFactory.newLatLngZoom(latLng, 16f)
-                                                )
-                                            }
-                                        }
-                                    }
-                                )
-                                HorizontalDivider()
-                            }
-                        }
-                    }
-
-                    if (!isSearchActive && savedPlaces.isNotEmpty()) {
-                        Spacer(Modifier.height(8.dp))
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            contentPadding = PaddingValues(horizontal = 4.dp)
+                        SmallFloatingActionButton(
+                            onClick = { isSatellite = !isSatellite },
+                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                            contentColor = MaterialTheme.colorScheme.primary,
+                            elevation = FloatingActionButtonDefaults.elevation(4.dp)
                         ) {
-                            items(savedPlaces) { place ->
-                                SuggestionChip(
-                                    onClick = {
-                                        val latLng = LatLng(place.latitude, place.longitude)
-                                        selectedLocation = latLng
-                                        selectedLocationName = place.name
-                                        coroutineScope.launch {
-                                            cameraPositionState.animate(
-                                                CameraUpdateFactory.newLatLngZoom(latLng, 16f)
-                                            )
-                                        }
-                                    },
-                                    label = { Text(place.name) },
-                                    icon = { Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                                )
-                            }
+                            Icon(
+                                imageVector = if (isSatellite) Icons.Filled.Map else Icons.Filled.Satellite,
+                                contentDescription = "Basculer la vue"
+                            )
+                        }
+
+                        FloatingActionButton(
+                            onClick = {
+                                viewModel.checkLocationSettings()
+                                currentLocation?.let { loc ->
+                                    selectedLocation = loc
+                                    selectedLocationName = null
+                                    coroutineScope.launch {
+                                        cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(loc, 16f))
+                                    }
+                                }
+                            },
+                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                            contentColor = MaterialTheme.colorScheme.primary,
+                            elevation = FloatingActionButtonDefaults.elevation(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.MyLocation,
+                                contentDescription = "Ma position"
+                            )
                         }
                     }
                 }
 
-                // Conteneur inférieur unifié : Boutons d'action carte + Feuille inférieure (Bottom Sheet)
-                Column(
+                // Panneau inférieur épuré : Réglage du rayon & Validation compacte
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
+                        .animateContentSize(),
+                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                    tonalElevation = 6.dp,
+                    shadowElevation = 8.dp,
+                    color = MaterialTheme.colorScheme.surface
                 ) {
-                    // Boutons d'action flottants sur la carte (Satellite + Ma position)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(end = 16.dp, bottom = 10.dp),
-                        horizontalArrangement = Arrangement.End
-                    ) {
+                    if (!isPanelExpanded) {
+                        // ─── Mode compact replié (Surface de carte maximale ~92%) ───
                         Column(
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            horizontalAlignment = Alignment.End
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            SmallFloatingActionButton(
-                                onClick = { isSatellite = !isSatellite },
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                contentColor = MaterialTheme.colorScheme.primary,
-                                elevation = FloatingActionButtonDefaults.elevation(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isSatellite) Icons.Filled.Map else Icons.Filled.Satellite,
-                                    contentDescription = "Basculer la vue"
-                                )
-                            }
-
-                            FloatingActionButton(
-                                onClick = {
-                                    viewModel.checkLocationSettings()
-                                    currentLocation?.let { loc ->
-                                        selectedLocation = loc
-                                        selectedLocationName = null
-                                        coroutineScope.launch {
-                                            cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(loc, 16f))
-                                        }
-                                    }
-                                },
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                contentColor = MaterialTheme.colorScheme.primary,
-                                elevation = FloatingActionButtonDefaults.elevation(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.MyLocation,
-                                    contentDescription = "Ma position"
-                                )
-                            }
-                        }
-                    }
-
-                    // Panneau inférieur : Réglage du rayon & Validation du lieu
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .animateContentSize(),
-                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                        tonalElevation = 6.dp,
-                        shadowElevation = 8.dp,
-                        color = MaterialTheme.colorScheme.surface
-                    ) {
-                        if (!isPanelExpanded) {
-                            // ─── Mode compact replié (Surface de carte maximale ~85%) ───
-                            Column(
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 12.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    .clickable { isPanelExpanded = true }
+                                    .padding(vertical = 4.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { isPanelExpanded = true }
-                                        .padding(vertical = 4.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(36.dp)
-                                            .height(4.dp)
-                                            .clip(RoundedCornerShape(2.dp))
-                                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
-                                    )
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clickable { isPanelExpanded = true },
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.LocationOn,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Column {
-                                            Text(
-                                                text = selectedLocationName ?: strings.placePickerSelectedPoint,
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = "Rayon : ${if (selectedRadiusM < 1000f) strings.radiusFormatMeters(selectedRadiusM.roundToInt()) else strings.radiusFormatKm(selectedRadiusM / 1000f)}" +
-                                                        if (selectedActiveFromMillis != null) " • Différé" else "",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(Modifier.width(12.dp))
-
-                                    Button(
-                                        onClick = {
-                                            val label = selectedLocationName ?: "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
-                                            onPlaceSelected(selectedLocation, label, null, null, null, selectedRadiusM, selectedActiveFromMillis)
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                                    ) {
-                                        Text(strings.placePickerConfirmButton)
-                                    }
-                                }
+                                        .width(36.dp)
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                                )
                             }
-                        } else {
-                            // ─── Mode étendu complet avec réglages optimisés ───
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 14.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { isPanelExpanded = false }
-                                        .padding(vertical = 4.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(36.dp)
-                                            .height(4.dp)
-                                            .clip(RoundedCornerShape(2.dp))
-                                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
-                                    )
-                                }
 
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { isPanelExpanded = true },
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        Icons.Filled.LocationOn,
+                                        Icons.Filled.NearMe,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(24.dp)
+                                        modifier = Modifier.size(20.dp)
                                     )
                                     Spacer(Modifier.width(8.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = selectedLocationName ?: strings.placePickerSelectedPoint,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = { isPanelExpanded = false },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.KeyboardArrowDown,
-                                            contentDescription = "Réduire",
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                                    Text(
+                                        text = "Rayon : ${if (selectedRadiusM < 1000f) strings.radiusFormatMeters(selectedRadiusM.roundToInt()) else strings.radiusFormatKm(selectedRadiusM / 1000f)}" +
+                                                if (selectedActiveFromMillis != null) " • Différé" else "",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
                                 }
 
-                                HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+                                FilledIconButton(
+                                    onClick = {
+                                        val label = selectedLocationName ?: "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
+                                        onPlaceSelected(selectedLocation, label, null, null, null, selectedRadiusM, selectedActiveFromMillis)
+                                    },
+                                    modifier = Modifier.size(44.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Check,
+                                        contentDescription = strings.placePickerConfirmButton,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // ─── Mode étendu optimisé et épuré (Sans 'Point sélectionné' ni Lat/Lng) ───
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { isPanelExpanded = false }
+                                    .padding(vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(36.dp)
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                                )
+                            }
 
-                                // Sélecteur de rayon de détection
+                            // En-tête du panneau : Rayon de détection + Badge + Bouton Validation compact [ ✓ ]
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
@@ -470,10 +346,10 @@ fun PlacePickerScreen(
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold
                                     )
+                                    Spacer(Modifier.width(8.dp))
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer,
-                                        modifier = Modifier.padding(start = 8.dp)
+                                        color = MaterialTheme.colorScheme.primaryContainer
                                     ) {
                                         Text(
                                             text = if (selectedRadiusM < 1000f)
@@ -488,65 +364,85 @@ fun PlacePickerScreen(
                                     }
                                 }
 
-                                // Puces de raccourcis rapides (Presets)
-                                val presets = remember(strings) {
-                                    listOf(
-                                        150f to strings.presetPedestrian,
-                                        450f to strings.presetStandard,
-                                        1000f to strings.presetBroad,
-                                        2500f to strings.presetTransit
-                                    )
-                                }
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    contentPadding = PaddingValues(horizontal = 2.dp),
-                                    modifier = Modifier.fillMaxWidth()
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    items(presets) { preset ->
-                                        val presetRadius = preset.first
-                                        val label = preset.second
-                                        val isSelected = (selectedRadiusM.roundToInt() == presetRadius.roundToInt())
-                                        FilterChip(
-                                            selected = isSelected,
-                                            onClick = { selectedRadiusM = presetRadius },
-                                            label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                                    IconButton(
+                                        onClick = { isPanelExpanded = false },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.KeyboardArrowDown,
+                                            contentDescription = "Réduire",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    FilledIconButton(
+                                        onClick = {
+                                            val label = selectedLocationName ?: "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
+                                            onPlaceSelected(selectedLocation, label, null, null, null, selectedRadiusM, selectedActiveFromMillis)
+                                        },
+                                        modifier = Modifier.size(44.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = IconButtonDefaults.filledIconButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            contentDescription = strings.placePickerConfirmButton,
+                                            modifier = Modifier.size(24.dp)
                                         )
                                     }
                                 }
+                            }
 
-                                // Slider fluide compact
-                                Slider(
-                                    value = selectedRadiusM,
-                                    onValueChange = {
-                                        selectedRadiusM = ((it / 25f).roundToInt() * 25).toFloat().coerceIn(100f, 3000f)
-                                    },
-                                    valueRange = 100f..3000f,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(32.dp)
+                            // Puces de raccourcis rapides (Presets)
+                            val presets = remember(strings) {
+                                listOf(
+                                    150f to strings.presetPedestrian,
+                                    450f to strings.presetStandard,
+                                    1000f to strings.presetBroad,
+                                    2500f to strings.presetTransit
                                 )
-
-                                // Option 1 : Heure d'activation différée
-                                PlaceActivationTimePicker(
-                                    activeFromMillis = selectedActiveFromMillis,
-                                    onActiveFromMillisChange = { selectedActiveFromMillis = it }
-                                )
-
-                                Spacer(Modifier.height(2.dp))
-
-                                Button(
-                                    onClick = {
-                                        val label = selectedLocationName ?: "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
-                                        onPlaceSelected(selectedLocation, label, null, null, null, selectedRadiusM, selectedActiveFromMillis)
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(48.dp),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text(strings.placePickerConfirmButton, fontWeight = FontWeight.Bold)
+                            }
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                contentPadding = PaddingValues(horizontal = 2.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(presets) { preset ->
+                                    val presetRadius = preset.first
+                                    val label = preset.second
+                                    val isSelected = (selectedRadiusM.roundToInt() == presetRadius.roundToInt())
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { selectedRadiusM = presetRadius },
+                                        label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                                    )
                                 }
                             }
+
+                            // Slider fluide compact
+                            Slider(
+                                value = selectedRadiusM,
+                                onValueChange = {
+                                    selectedRadiusM = ((it / 25f).roundToInt() * 25).toFloat().coerceIn(100f, 3000f)
+                                },
+                                valueRange = 100f..3000f,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(32.dp)
+                            )
+
+                            // Option 1 : Heure d'activation différée
+                            PlaceActivationTimePicker(
+                                activeFromMillis = selectedActiveFromMillis,
+                                onActiveFromMillisChange = { selectedActiveFromMillis = it }
+                            )
                         }
                     }
                 }
@@ -556,7 +452,9 @@ fun PlacePickerScreen(
             CategoryPickerTab(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues),
+                    .background(MaterialTheme.colorScheme.background)
+                    .statusBarsPadding()
+                    .padding(top = 64.dp),
                 userSettings = userSettings,
                 activeFromMillis = selectedActiveFromMillis,
                 onActiveFromMillisChange = { selectedActiveFromMillis = it },
@@ -568,8 +466,313 @@ fun PlacePickerScreen(
                 }
             )
         }
+
+        // ─── Commandes Flottantes Supérieures (Plein Écran Aéré) ───────────
+        if (selectedTabIndex == 0 && isSearchExpanded) {
+            // Recherche rétractable ouverte (une seule ligne de hauteur)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .align(Alignment.TopCenter)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 6.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Search,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        BasicTextField(
+                            value = uiState.searchQuery,
+                            onValueChange = viewModel::updateSearchQuery,
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(focusRequester),
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            decorationBox = { innerTextField ->
+                                if (uiState.searchQuery.isEmpty()) {
+                                    Text(
+                                        "Rechercher une adresse, un commerce…",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        )
+                        if (uiState.searchQuery.isNotEmpty()) {
+                            IconButton(
+                                onClick = { viewModel.updateSearchQuery("") },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Clear,
+                                    contentDescription = "Effacer",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = {
+                                isSearchExpanded = false
+                                viewModel.updateSearchQuery("")
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = "Fermer",
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // Suggestions / Prédictions
+                if (uiState.isSearching) {
+                    Spacer(Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 6.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        }
+                    }
+                } else if (uiState.predictions.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    ElevatedCard(
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 280.dp),
+                        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 6.dp),
+                        colors = CardDefaults.elevatedCardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        )
+                    ) {
+                        LazyColumn {
+                            items(uiState.predictions) { prediction ->
+                                ListItem(
+                                    headlineContent = {
+                                        Text(prediction.getPrimaryText(null).toString())
+                                    },
+                                    supportingContent = {
+                                        Text(
+                                            prediction.getSecondaryText(null).toString(),
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    },
+                                    leadingContent = {
+                                        Icon(
+                                            Icons.Filled.LocationOn,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
+                                    modifier = Modifier.clickable {
+                                        viewModel.selectPrediction(prediction.placeId) { latLng, name ->
+                                            selectedLocation = latLng
+                                            selectedLocationName = name
+                                            isSearchExpanded = false
+                                            viewModel.updateSearchQuery("")
+                                            coroutineScope.launch {
+                                                cameraPositionState.animate(
+                                                    CameraUpdateFactory.newLatLngZoom(latLng, 16f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                )
+                                HorizontalDivider()
+                            }
+                        }
+                    }
+                } else if (savedPlaces.isNotEmpty() && uiState.searchQuery.isEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
+                    ) {
+                        items(savedPlaces) { place ->
+                            SuggestionChip(
+                                onClick = {
+                                    val latLng = LatLng(place.latitude, place.longitude)
+                                    selectedLocation = latLng
+                                    selectedLocationName = place.name
+                                    isSearchExpanded = false
+                                    coroutineScope.launch {
+                                        cameraPositionState.animate(
+                                            CameraUpdateFactory.newLatLngZoom(latLng, 16f)
+                                        )
+                                    }
+                                },
+                                label = { Text(place.name) },
+                                icon = { Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                colors = SuggestionChipDefaults.suggestionChipColors(
+                                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            // Barre flottante compacte : [ ← Retour ]   [ 📍 Carte | 🏷️ Catégorie ]   [ 🔍 Recherche ]
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .align(Alignment.TopCenter),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Bouton retour flottant semi-transparent
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    IconButton(
+                        onClick = onNavigateBack,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = strings.back,
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                // Pilule de sélection d'onglets compacte et flottante
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                    shadowElevation = 4.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val mapSelected = selectedTabIndex == 0
+                        val catSelected = selectedTabIndex == 1
+
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (mapSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable { selectedTabIndex = 0 }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.Place,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (mapSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    strings.placePickerTabMap,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (mapSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (mapSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (catSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable { selectedTabIndex = 1 }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.Category,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (catSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    strings.placePickerTabCategory,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (catSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (catSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Bouton loupe de recherche flottant (visible uniquement sur l'onglet carte)
+                if (selectedTabIndex == 0) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                        shadowElevation = 4.dp,
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        IconButton(
+                            onClick = { isSearchExpanded = true },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Search,
+                                contentDescription = "Rechercher",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                } else {
+                    Spacer(Modifier.size(44.dp))
+                }
+            }
+        }
     }
 }
+
 
 @Composable
 private fun CategoryPickerTab(
