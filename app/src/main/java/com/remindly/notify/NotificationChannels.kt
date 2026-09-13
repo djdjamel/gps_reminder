@@ -8,6 +8,7 @@ import android.os.Build
 object NotificationChannels {
     const val TIME_CHANNEL_ID = "reminders_time"
     const val PLACE_CHANNEL_ID = "reminders_place"
+    const val DIAGNOSTIC_CHANNEL_ID = "diagnostic_gps"
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -35,8 +36,20 @@ object NotificationChannels {
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
 
+            val diagnosticChannel = NotificationChannel(
+                DIAGNOSTIC_CHANNEL_ID,
+                "Diagnostic GPS en direct",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Affichage en direct de la distance et précision GPS pour diagnostic."
+                enableVibration(false)
+                enableLights(false)
+                setShowBadge(false)
+            }
+
             notificationManager.createNotificationChannel(timeChannel)
             notificationManager.createNotificationChannel(placeChannel)
+            notificationManager.createNotificationChannel(diagnosticChannel)
         }
     }
 }

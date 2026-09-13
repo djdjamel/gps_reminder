@@ -60,6 +60,10 @@ data class AppStrings(
     val audioPlayTooltip: String,
     val audioStopTooltip: String,
     val repeatingBadge: String,
+    val diagnosticStart: String,
+    val diagnosticStop: String,
+    val diagnosticBadge: (String, Int) -> String,
+    val diagnosticNotificationTitle: String,
 
     // Quick Capture Sheet & Dictation
     val quickShortcutsTitle: String,
@@ -255,6 +259,10 @@ val FrenchStrings = AppStrings(
     audioPlayTooltip = "Écouter la note vocale",
     audioStopTooltip = "Arrêter la lecture",
     repeatingBadge = "Habitude",
+    diagnosticStart = "Diagnostiquer la distance",
+    diagnosticStop = "Arrêter le suivi",
+    diagnosticBadge = { dist, acc -> "📡 Suivi 5s : $dist (±$acc m)" },
+    diagnosticNotificationTitle = "Surveillance intensive (Diagnostic)",
 
     quickShortcutsTitle = "Raccourcis rapides",
     shortcutHome = "Maison",
@@ -444,6 +452,10 @@ val ArabicStrings = AppStrings(
     audioPlayTooltip = "تشغيل التسجيل الصوتي",
     audioStopTooltip = "إيقاف التشغيل",
     repeatingBadge = "عادة",
+    diagnosticStart = "تشخيص المسافة",
+    diagnosticStop = "إيقاف المتابعة",
+    diagnosticBadge = { dist, acc -> "📡 متابعة 5 ث : $dist (±$acc م)" },
+    diagnosticNotificationTitle = "متابعة مكثفة (تشخيص)",
 
     quickShortcutsTitle = "اختصارات سريعة",
     shortcutHome = "المنزل",
@@ -633,6 +645,10 @@ val EnglishStrings = AppStrings(
     audioPlayTooltip = "Play voice note",
     audioStopTooltip = "Stop audio",
     repeatingBadge = "Habit",
+    diagnosticStart = "Diagnose distance",
+    diagnosticStop = "Stop tracking",
+    diagnosticBadge = { dist, acc -> "📡 Live 5s: $dist (±$acc m)" },
+    diagnosticNotificationTitle = "Intensive tracking (Diagnostic)",
 
     quickShortcutsTitle = "Quick shortcuts",
     shortcutHome = "Home",

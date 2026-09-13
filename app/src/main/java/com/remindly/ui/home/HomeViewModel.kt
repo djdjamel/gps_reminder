@@ -16,6 +16,8 @@ import com.remindly.data.repo.ReminderRepository
 import com.remindly.domain.model.Reminder
 import com.remindly.domain.model.ReminderStatus
 import com.remindly.domain.model.TriggerType
+import com.remindly.location.DiagnosticLocationTracker
+import com.remindly.location.DiagnosticState
 import com.remindly.location.GeofenceManager
 import com.remindly.time.AlarmScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -50,8 +52,19 @@ class HomeViewModel @Inject constructor(
     private val workspaceManager: WorkspaceManager,
     private val authManager: AuthManager,
     private val collaboratorRepository: CollaboratorRepository,
+    private val diagnosticTracker: DiagnosticLocationTracker,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    val diagnosticState: StateFlow<DiagnosticState> = diagnosticTracker.state
+
+    fun toggleDiagnostic(reminder: Reminder) {
+        if (diagnosticTracker.isDiagnosticActiveFor(reminder.id)) {
+            diagnosticTracker.stopDiagnostic(context)
+        } else {
+            diagnosticTracker.startDiagnostic(context, reminder)
+        }
+    }
 
     private val fusedLocationClient: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context)

@@ -1,5 +1,6 @@
 package com.remindly.ui.home
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -47,6 +48,7 @@ fun HomeScreen(
     val currentWorkspaceEmail by viewModel.currentWorkspaceEmail.collectAsStateWithLifecycle()
     val collaborators by viewModel.collaborators.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val diagnosticState by viewModel.diagnosticState.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     var showWorkspaceMenu by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
@@ -174,10 +176,14 @@ fun HomeScreen(
                         key = { "${section.dateMillis}_${it.id}" }
                     ) { reminder ->
                         val audioAttachment = reminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
+                        val isDiagActive = diagnosticState.isRunning && diagnosticState.reminderId == reminder.id
                         ReminderItem(
                             reminder = reminder,
                             userLocation = uiState.userLocation,
                             isPlayingAudio = uiState.playingReminderId == reminder.id,
+                            isDiagnosticActive = isDiagActive,
+                            diagnosticDistanceM = if (isDiagActive) diagnosticState.currentDistanceM else null,
+                            diagnosticAccuracyM = if (isDiagActive) diagnosticState.currentAccuracyM else null,
                             onCheckedChange = { isChecked ->
                                 viewModel.onReminderCompleted(reminder.id, isChecked)
                             },
@@ -188,6 +194,9 @@ fun HomeScreen(
                                 if (audioAttachment != null) {
                                     viewModel.playAudio(reminder.id, audioAttachment.localPath)
                                 }
+                            },
+                            onToggleDiagnostic = {
+                                viewModel.toggleDiagnostic(reminder)
                             }
                         )
                     }
@@ -349,11 +358,15 @@ fun ReminderItem(
     reminder: Reminder,
     userLocation: android.location.Location?,
     isPlayingAudio: Boolean,
+    isDiagnosticActive: Boolean = false,
+    diagnosticDistanceM: Float? = null,
+    diagnosticAccuracyM: Float? = null,
     onCheckedChange: (Boolean) -> Unit,
     onClick: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
-    onToggleAudio: () -> Unit
+    onToggleAudio: () -> Unit,
+    onToggleDiagnostic: () -> Unit = {}
 ) {
     val strings = LocalAppStrings.current
     val isCompleted = reminder.status == ReminderStatus.COMPLETED
@@ -361,8 +374,12 @@ fun ReminderItem(
     val firstImage = reminder.attachments.firstOrNull { it.type == AttachmentType.IMAGE }
     val audioAttachment = reminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
 
-    val distanceText: String? = remember(reminder.placeLat, reminder.placeLng, userLocation) {
-        if (userLocation != null && reminder.placeLat != null && reminder.placeLng != null) {
+    val distanceText: String? = remember(reminder.placeLat, reminder.placeLng, userLocation, isDiagnosticActive, diagnosticDistanceM) {
+        if (isDiagnosticActive && diagnosticDistanceM != null) {
+            val d = diagnosticDistanceM
+            if (d < 1000f) strings.distanceMeters(d.toInt())
+            else strings.distanceKm(d / 1000f)
+        } else if (userLocation != null && reminder.placeLat != null && reminder.placeLng != null) {
             val results = FloatArray(1)
             android.location.Location.distanceBetween(
                 userLocation.latitude, userLocation.longitude,
@@ -477,6 +494,46 @@ fun ReminderItem(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    // Toggle Surveillance Intensive / Diagnostic GPS (Uniquement pour rappels avec lieu précis non terminés)
+                    if (reminder.placeLat != null && reminder.placeLng != null && !isCompleted) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isDiagnosticActive) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                            border = if (isDiagnosticActive) BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary) else BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier.clickable { onToggleDiagnostic() }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.Radar,
+                                    contentDescription = if (isDiagnosticActive) strings.diagnosticStop else strings.diagnosticStart,
+                                    modifier = Modifier.size(11.dp),
+                                    tint = if (isDiagnosticActive) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(Modifier.width(3.dp))
+                                val label = if (isDiagnosticActive) {
+                                    if (diagnosticDistanceM != null) {
+                                        val dStr = if (diagnosticDistanceM < 1000f) "${diagnosticDistanceM.toInt()}m" else String.format(Locale.ROOT, "%.1fkm", diagnosticDistanceM / 1000f)
+                                        val acc = diagnosticAccuracyM?.toInt() ?: 0
+                                        strings.diagnosticBadge(dStr, acc) + "  ✕"
+                                    } else {
+                                        "📡 Diagnostic 5s..."
+                                    }
+                                } else {
+                                    "📡 " + strings.diagnosticStart
+                                }
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isDiagnosticActive) FontWeight.Bold else FontWeight.Medium,
+                                    maxLines = 1,
+                                    color = if (isDiagnosticActive) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
                     // Badge Activation Différée (Option 1)
                     if (reminder.placeActiveFromMillis != null && reminder.placeActiveFromMillis > System.currentTimeMillis()) {
                         val timeText = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(reminder.placeActiveFromMillis))

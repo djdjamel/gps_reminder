@@ -14,6 +14,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <application
         android:name=".RemindlyApp"
@@ -49,6 +50,10 @@
         <service
             android:name=".media.AudioAlarmService"
             android:foregroundServiceType="mediaPlayback"
+            android:exported="false" />
+        <service
+            android:name=".location.DiagnosticLocationService"
+            android:foregroundServiceType="location"
             android:exported="false" />
         <receiver
             android:name=".location.BootReceiver"
