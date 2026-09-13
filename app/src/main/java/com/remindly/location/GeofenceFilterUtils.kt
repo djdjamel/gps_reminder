@@ -36,24 +36,53 @@ object GeofenceFilterUtils {
     }
 
     /**
-     * Évalue si la position actuelle au moment du franchissement de géofence est pertinente
-     * pour déclencher l'alerte du commerce de proximité.
+     * Calcule le seuil de précision GPS acceptable proportionnel au rayon de détection configuré.
+     * Par défaut : 30% du rayon (ratio = 0.30f), avec un plancher minimal de 50m
+     * pour garantir une tolérance suffisante même sur les petits rayons piétons (ex. 100m - 150m).
+     */
+    fun calculateMaxAccuracy(
+        radiusM: Float?,
+        ratio: Float = 0.30f,
+        minAccuracyM: Float = 50f
+    ): Float {
+        val baseRadius = radiusM ?: 450f
+        return maxOf(minAccuracyM, baseRadius * ratio)
+    }
+
+    /**
+     * Valide si la précision GPS constatée est acceptable pour le rayon de détection configuré.
+     */
+    fun evaluateAccuracy(
+        accuracyM: Float?,
+        radiusM: Float?,
+        ratio: Float = 0.30f,
+        minAccuracyM: Float = 50f
+    ): Boolean {
+        if (accuracyM == null) return true
+        val maxAllowed = calculateMaxAccuracy(radiusM, ratio, minAccuracyM)
+        return accuracyM <= maxAllowed
+    }
+
+    /**
+     * Évalue la pertinence d'un déclenchement de géofence.
      *
-     * @param location Position GPS au déclenchement
-     * @param poiLat Latitude du commerce ou POI
-     * @param poiLng Longitude du commerce ou POI
+     * @param location Position GPS au moment du déclenchement
+     * @param poiLat Latitude de la cible
+     * @param poiLng Longitude de la cible
+     * @param radiusM Rayon de la zone de détection configurée (calibre la précision admissible à 30%)
      * @param enabled Si le filtrage intelligent est activé dans les réglages
      * @param maxSpeedKmh Vitesse maximale autorisée (défaut : 65 km/h, au-dessus = transit rapide)
-     * @param maxAccuracyM Précision GPS maximale acceptable (défaut : 50m)
+     * @param maxAccuracyM Précision GPS maximale acceptable (si null, calculée proportionnellement à 30% du rayon)
      * @param maxHeadingAngle Angle maximal entre le déplacement et le POI (défaut : 75°)
      */
     fun evaluateRelevance(
         location: Location?,
         poiLat: Double?,
         poiLng: Double?,
+        radiusM: Float? = null,
         enabled: Boolean = true,
         maxSpeedKmh: Float = 65f,
-        maxAccuracyM: Float = 50f,
+        maxAccuracyM: Float? = null,
         maxHeadingAngle: Float = 75f
     ): GeofenceRelevanceResult {
         if (!enabled || location == null) {
@@ -63,11 +92,12 @@ object GeofenceFilterUtils {
         val accuracy = if (location.hasAccuracy()) location.accuracy else null
         val speedKmh = if (location.hasSpeed()) location.speed * 3.6f else null
 
-        // 1. Contrôle de précision GPS (Accuracy Guard)
-        if (accuracy != null && accuracy > maxAccuracyM) {
+        // 1. Contrôle de précision GPS (Accuracy Guard) proportionnel au rayon (30%)
+        val effectiveMaxAccuracy = maxAccuracyM ?: calculateMaxAccuracy(radiusM, ratio = 0.30f)
+        if (accuracy != null && accuracy > effectiveMaxAccuracy) {
             return GeofenceRelevanceResult(
                 isRelevant = false,
-                reason = "Précision GPS trop faible (${accuracy.toInt()}m > ${maxAccuracyM.toInt()}m)",
+                reason = "Précision GPS trop faible (${accuracy.toInt()}m > ${effectiveMaxAccuracy.toInt()}m)",
                 accuracyM = accuracy,
                 speedKmh = speedKmh
             )

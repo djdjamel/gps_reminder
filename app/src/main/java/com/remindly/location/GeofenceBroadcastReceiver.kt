@@ -175,16 +175,17 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                         val targetLng = if (!placeLng.isNaN()) placeLng.toDouble() else reminder.placeLng
 
                         val settings = settingsRepository.getSettings()
+                        val targetRadiusM = reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
 
-                        // Validation de Pertinence et d'Accessibilité (Anti-autoroute, Cap de déplacement, Précision GPS)
+                        // Validation de Pertinence et d'Accessibilité (Anti-autoroute, Cap de déplacement, Précision GPS proportionnelle à 30% du rayon)
                         val triggerLoc = geofencingEvent.triggeringLocation
                         val relevance = GeofenceFilterUtils.evaluateRelevance(
                             location = triggerLoc,
                             poiLat = targetLat,
                             poiLng = targetLng,
+                            radiusM = targetRadiusM,
                             enabled = settings.smartGeofenceFiltering,
                             maxSpeedKmh = settings.maxFilterSpeedKmh.toFloat(),
-                            maxAccuracyM = 50f,
                             maxHeadingAngle = 75f
                         )
 
