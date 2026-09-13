@@ -142,7 +142,7 @@ fun PlacePickerScreen(
                 cameraPositionState = cameraPositionState,
                 contentPadding = PaddingValues(
                     top = 72.dp,
-                    bottom = if (isPanelExpanded) 190.dp else 70.dp
+                    bottom = if (isPanelExpanded) 240.dp else 120.dp
                 ),
                 properties = MapProperties(
                     mapType = if (isSatellite) MapType.HYBRID else MapType.NORMAL,
@@ -242,6 +242,7 @@ fun PlacePickerScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .navigationBarsPadding()
                                 .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 12.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
@@ -313,7 +314,8 @@ fun PlacePickerScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 14.dp),
+                                .navigationBarsPadding()
+                                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Box(
@@ -454,7 +456,8 @@ fun PlacePickerScreen(
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.background)
                     .statusBarsPadding()
-                    .padding(top = 64.dp),
+                    .padding(top = 64.dp)
+                    .navigationBarsPadding(),
                 userSettings = userSettings,
                 activeFromMillis = selectedActiveFromMillis,
                 onActiveFromMillisChange = { selectedActiveFromMillis = it },
