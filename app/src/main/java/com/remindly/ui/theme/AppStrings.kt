@@ -146,6 +146,12 @@ data class AppStrings(
     val settingsLanguageSectionTitle: String,
     val settingsLanguageSectionSubtitle: String,
     val settingsLanguageCurrent: String,
+    // Section Thème
+    val settingsThemeSectionTitle: String,
+    val settingsThemeSectionSubtitle: String,
+    val themeLight: String,
+    val themeDark: String,
+    val themeSystem: String,
     // Section Rappels Vocaux
     val settingsVoiceSectionTitle: String,
     val settingsVoiceSectionSubtitle: String,
@@ -339,6 +345,11 @@ val FrenchStrings = AppStrings(
     settingsLanguageSectionTitle = "Langue de l'application",
     settingsLanguageSectionSubtitle = "Personnalisez la langue d'affichage et de saisie vocale",
     settingsLanguageCurrent = "Langue active",
+    settingsThemeSectionTitle = "Thème et Apparence",
+    settingsThemeSectionSubtitle = "Personnalisez l'affichage de l'application selon vos préférences",
+    themeLight = "Clair",
+    themeDark = "Sombre",
+    themeSystem = "Système",
 
     settingsVoiceSectionTitle = "Rappels Vocaux",
     settingsVoiceSectionSubtitle = "Personnalisez la sonnerie pour vos enregistrements audio",
@@ -532,6 +543,11 @@ val ArabicStrings = AppStrings(
     settingsLanguageSectionTitle = "لغة التطبيق",
     settingsLanguageSectionSubtitle = "تخصيص لغة العرض والأوامر الصوتية",
     settingsLanguageCurrent = "اللغة المفعلة",
+    settingsThemeSectionTitle = "المظهر والسمة",
+    settingsThemeSectionSubtitle = "تخصيص وضع العرض والألوان المفضلة لديك",
+    themeLight = "فاتح",
+    themeDark = "داكن",
+    themeSystem = "تلقائي (النظام)",
 
     settingsVoiceSectionTitle = "التنبيهات الصوتية",
     settingsVoiceSectionSubtitle = "تخصيص نغمة ورنين التسجيلات الصوتية",
@@ -725,6 +741,11 @@ val EnglishStrings = AppStrings(
     settingsLanguageSectionTitle = "App Language",
     settingsLanguageSectionSubtitle = "Customize display language and voice dictation recognition",
     settingsLanguageCurrent = "Active Language",
+    settingsThemeSectionTitle = "Theme & Appearance",
+    settingsThemeSectionSubtitle = "Customize app appearance according to your preference",
+    themeLight = "Light",
+    themeDark = "Dark",
+    themeSystem = "System",
 
     settingsVoiceSectionTitle = "Voice Reminders",
     settingsVoiceSectionSubtitle = "Customize alert chime and playback for your audio recordings",

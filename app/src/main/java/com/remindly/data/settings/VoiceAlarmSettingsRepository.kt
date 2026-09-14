@@ -27,6 +27,7 @@ interface VoiceAlarmSettingsRepository {
     suspend fun setVibrate(vibrate: Boolean)
     suspend fun setAppLanguage(languageCode: String)
     suspend fun setHasSelectedLanguage(selected: Boolean)
+    suspend fun setAppTheme(theme: String)
     suspend fun setPoiSearchRadius(radiusKm: Int)
     suspend fun setPoiDetectionRadiusM(radiusM: Int)
     suspend fun setRollingExitRadiusM(radiusM: Int)
@@ -59,6 +60,7 @@ class VoiceAlarmSettingsRepositoryImpl(
         val KEY_VIBRATE = booleanPreferencesKey("voice_vibrate")
         val KEY_APP_LANGUAGE = stringPreferencesKey("app_language")
         val KEY_HAS_SELECTED_LANGUAGE = booleanPreferencesKey("has_selected_language")
+        val KEY_APP_THEME = stringPreferencesKey("app_theme")
         val KEY_POI_RADIUS = intPreferencesKey("poi_search_radius_km")
         val KEY_POI_DETECTION_RADIUS_M = intPreferencesKey("poi_detection_radius_m")
         val KEY_ROLLING_EXIT_RADIUS_M = intPreferencesKey("rolling_exit_radius_m")
@@ -93,6 +95,7 @@ class VoiceAlarmSettingsRepositoryImpl(
                 vibrate = preferences[PreferencesKeys.KEY_VIBRATE] ?: true,
                 appLanguage = preferences[PreferencesKeys.KEY_APP_LANGUAGE] ?: "fr",
                 hasSelectedLanguage = preferences[PreferencesKeys.KEY_HAS_SELECTED_LANGUAGE] ?: false,
+                appTheme = preferences[PreferencesKeys.KEY_APP_THEME] ?: "SYSTEM",
                 poiSearchRadiusKm = preferences[PreferencesKeys.KEY_POI_RADIUS] ?: 3,
                 poiDetectionRadiusM = preferences[PreferencesKeys.KEY_POI_DETECTION_RADIUS_M] ?: 450,
                 announcePlaceByVoice = preferences[PreferencesKeys.KEY_ANNOUNCE_PLACE_BY_VOICE] ?: true,
@@ -142,6 +145,12 @@ class VoiceAlarmSettingsRepositoryImpl(
     override suspend fun setHasSelectedLanguage(selected: Boolean) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.KEY_HAS_SELECTED_LANGUAGE] = selected
+        }
+    }
+
+    override suspend fun setAppTheme(theme: String) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.KEY_APP_THEME] = theme
         }
     }
 

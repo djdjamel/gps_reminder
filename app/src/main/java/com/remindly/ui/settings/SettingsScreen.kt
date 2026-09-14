@@ -32,6 +32,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.remindly.data.settings.VoiceAlarmSettings
 import com.remindly.domain.model.AppLanguage
+import com.remindly.domain.model.AppTheme
 import com.remindly.notify.NotificationChannels
 import com.remindly.ui.theme.LocalAppStrings
 import kotlin.math.roundToInt
@@ -113,6 +114,51 @@ fun SettingsScreen(
                                 label = {
                                     Text(
                                         text = "${lang.flagEmoji} ${lang.nativeName}",
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                leadingIcon = if (isSelected) {
+                                    {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null,
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ─── Section 0b : Thème et Apparence ─────────────────────────────
+            SettingsCard(
+                title = strings.settingsThemeSectionTitle,
+                subtitle = strings.settingsThemeSectionSubtitle,
+                icon = Icons.Filled.Palette,
+                iconColor = MaterialTheme.colorScheme.primary
+            ) {
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val themeOptions = listOf(
+                            Triple(AppTheme.LIGHT.name, strings.themeLight, "☀️"),
+                            Triple(AppTheme.DARK.name, strings.themeDark, "🌙"),
+                            Triple(AppTheme.SYSTEM.name, strings.themeSystem, "⚙️")
+                        )
+                        themeOptions.forEach { (key, label, emoji) ->
+                            val isSelected = settings.appTheme == key
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.updateAppTheme(key) },
+                                label = {
+                                    Text(
+                                        text = "$emoji $label",
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                     )
                                 },

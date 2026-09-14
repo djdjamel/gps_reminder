@@ -73,6 +73,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateAppTheme(theme: String) {
+        viewModelScope.launch {
+            settingsRepository.setAppTheme(theme)
+        }
+    }
+
     fun updatePoiRadius(radiusKm: Int) {
         viewModelScope.launch {
             settingsRepository.setPoiSearchRadius(radiusKm)

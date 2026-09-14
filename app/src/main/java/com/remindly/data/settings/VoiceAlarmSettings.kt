@@ -8,6 +8,8 @@ data class VoiceAlarmSettings(
     val appLanguage: String = "fr",
     // L'utilisateur a-t-il déjà sélectionné la langue initiale au 1er démarrage
     val hasSelectedLanguage: Boolean = false,
+    // Thème de l'application ("LIGHT", "DARK", "SYSTEM")
+    val appTheme: String = "SYSTEM",
     // Périmètre de recherche globale des catégories (1, 2, 3, 5, 10 km)
     val poiSearchRadiusKm: Int = 3,
     // Rayon de détection de chaque géofence de commerce POI en mètres (défaut : 450m)

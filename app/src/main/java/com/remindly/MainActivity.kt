@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -12,6 +13,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.remindly.auth.AuthManager
 import com.remindly.data.settings.VoiceAlarmSettings
 import com.remindly.data.settings.VoiceAlarmSettingsRepository
+import com.remindly.domain.model.AppTheme
 import com.remindly.ui.components.PermissionsWrapper
 import com.remindly.ui.navigation.RemindlyNavHost
 import com.remindly.ui.theme.LocalAppStrings
@@ -37,11 +39,20 @@ class MainActivity : ComponentActivity() {
             val currentStrings = getStringsForLanguage(settings.appLanguage)
             val layoutDirection = if (settings.appLanguage == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr
 
+            val isDark = when (settings.appTheme) {
+                AppTheme.LIGHT.name -> false
+                AppTheme.DARK.name -> true
+                else -> isSystemInDarkTheme()
+            }
+
             CompositionLocalProvider(
                 LocalAppStrings provides currentStrings,
                 LocalLayoutDirection provides layoutDirection
             ) {
-                RemindlyTheme {
+                RemindlyTheme(
+                    darkTheme = isDark,
+                    dynamicColor = false
+                ) {
                     PermissionsWrapper {
                         RemindlyNavHost(
                             authManager = authManager,
@@ -53,4 +64,3 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
