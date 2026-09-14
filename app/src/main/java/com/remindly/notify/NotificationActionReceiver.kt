@@ -27,6 +27,9 @@ class NotificationActionReceiver : BroadcastReceiver() {
     @Inject
     lateinit var geofenceManager: GeofenceManager
 
+    @Inject
+    lateinit var diagnosticTracker: com.remindly.location.DiagnosticLocationTracker
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -41,6 +44,9 @@ class NotificationActionReceiver : BroadcastReceiver() {
                     ACTION_COMPLETE -> {
                         reminderRepository.setStatus(reminderId, ReminderStatus.COMPLETED)
                         geofenceManager.removeGeofence(reminderId)
+                        if (diagnosticTracker.isDiagnosticActiveFor(reminderId)) {
+                            diagnosticTracker.stopDiagnostic(context)
+                        }
                         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                         notificationManager.cancel(reminderId.toInt())
                     }

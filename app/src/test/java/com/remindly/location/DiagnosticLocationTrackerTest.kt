@@ -39,6 +39,10 @@ class DiagnosticLocationTrackerTest {
         assertEquals(42L, customState.reminderId)
         assertEquals(450f, customState.targetRadiusM)
         assertTrue(customState.isRunning)
+        assertFalse(customState.autoStopOnExit)
+
+        val zoneState = customState.copy(autoStopOnExit = true)
+        assertTrue(zoneState.autoStopOnExit)
     }
 
     @Test

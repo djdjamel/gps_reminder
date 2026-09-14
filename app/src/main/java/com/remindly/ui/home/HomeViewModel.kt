@@ -289,6 +289,9 @@ class HomeViewModel @Inject constructor(
             if (isCompleted) {
                 alarmScheduler.cancel(id)
                 geofenceManager.removeGeofence(id)
+                if (diagnosticTracker.isDiagnosticActiveFor(id)) {
+                    diagnosticTracker.stopDiagnostic(context)
+                }
             } else {
                 val reminder = reminderRepository.getById(id)
                 if (reminder != null) {

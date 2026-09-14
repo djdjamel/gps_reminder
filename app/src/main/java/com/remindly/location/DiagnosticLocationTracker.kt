@@ -20,6 +20,7 @@ data class DiagnosticState(
     val currentDistanceM: Float? = null,
     val currentAccuracyM: Float? = null,
     val currentSpeedKmh: Float? = null,
+    val autoStopOnExit: Boolean = false,
     val lastUpdateTimestamp: Long = 0L
 )
 
@@ -30,6 +31,17 @@ class DiagnosticLocationTracker @Inject constructor() {
     val state: StateFlow<DiagnosticState> = _state.asStateFlow()
 
     fun startDiagnostic(context: Context, reminder: Reminder) {
+        startTrackingInternal(context, reminder, autoStopOnExit = false)
+    }
+
+    fun startLiveZoneTracking(context: Context, reminder: Reminder) {
+        val current = _state.value
+        // Si le suivi est déjà actif pour ce rappel, on n'écrase pas
+        if (current.isRunning && current.reminderId == reminder.id) return
+        startTrackingInternal(context, reminder, autoStopOnExit = true)
+    }
+
+    private fun startTrackingInternal(context: Context, reminder: Reminder, autoStopOnExit: Boolean) {
         val lat = reminder.placeLat ?: return
         val lng = reminder.placeLng ?: return
         val radiusM = reminder.placeRadiusM ?: 450f
@@ -42,6 +54,7 @@ class DiagnosticLocationTracker @Inject constructor() {
             targetLat = lat,
             targetLng = lng,
             targetRadiusM = radiusM,
+            autoStopOnExit = autoStopOnExit,
             lastUpdateTimestamp = System.currentTimeMillis()
         )
 
@@ -52,6 +65,7 @@ class DiagnosticLocationTracker @Inject constructor() {
             putExtra(DiagnosticLocationService.EXTRA_TARGET_LAT, lat)
             putExtra(DiagnosticLocationService.EXTRA_TARGET_LNG, lng)
             putExtra(DiagnosticLocationService.EXTRA_TARGET_RADIUS_M, radiusM)
+            putExtra(DiagnosticLocationService.EXTRA_AUTO_STOP_ON_EXIT, autoStopOnExit)
         }
         ContextCompat.startForegroundService(context, intent)
     }

@@ -15,7 +15,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.google.android.gms.location.*
 import com.remindly.MainActivity
-import com.remindly.R
+import com.remindly.notify.NotificationActionReceiver
 import com.remindly.notify.NotificationChannels
 import com.remindly.util.AppLogger
 import dagger.hilt.android.AndroidEntryPoint
@@ -39,6 +39,8 @@ class DiagnosticLocationService : Service() {
     private var targetLat: Double = 0.0
     private var targetLng: Double = 0.0
     private var targetRadiusM: Float = 450f
+    private var autoStopOnExit: Boolean = false
+    private var hasConfirmedEntry: Boolean = false
 
     private var isTracking = false
 
@@ -65,6 +67,8 @@ class DiagnosticLocationService : Service() {
                 targetLat = intent.getDoubleExtra(EXTRA_TARGET_LAT, 0.0)
                 targetLng = intent.getDoubleExtra(EXTRA_TARGET_LNG, 0.0)
                 targetRadiusM = intent.getFloatExtra(EXTRA_TARGET_RADIUS_M, 450f)
+                autoStopOnExit = intent.getBooleanExtra(EXTRA_AUTO_STOP_ON_EXIT, false)
+                hasConfirmedEntry = false
 
                 if (reminderId != -1L && targetLat != 0.0 && targetLng != 0.0) {
                     startTracking()
@@ -99,7 +103,8 @@ class DiagnosticLocationService : Service() {
             startForeground(NOTIFICATION_ID, initialNotification)
         }
 
-        val startMsg = "Démarrage surveillance intensive (5s) pour rappel #$reminderId ('$reminderText') vers ($targetLat, $targetLng), rayon: ${targetRadiusM.toInt()}m"
+        val modeDesc = if (autoStopOnExit) "suivi live de zone (arrêt auto à la sortie)" else "surveillance continue (5s)"
+        val startMsg = "Démarrage $modeDesc pour rappel #$reminderId ('$reminderText') vers ($targetLat, $targetLng), rayon: ${targetRadiusM.toInt()}m"
         android.util.Log.i(TAG, startMsg)
         appLogger.i("DIAG_GPS", startMsg, reminderId)
 
@@ -138,13 +143,27 @@ class DiagnosticLocationService : Service() {
 
         tracker.updateMeasurement(distanceM, accuracyM, speedKmh)
 
+        val inRadius = distanceM <= targetRadiusM
+        if (inRadius) {
+            hasConfirmedEntry = true
+        }
+
+        // Si autoStopOnExit est activé et que l'utilisateur est sorti du rayon après y être entré
+        if (autoStopOnExit && hasConfirmedEntry && !inRadius) {
+            val exitMsg = "Sortie du rayon de détection (${distanceM.toInt()}m > ${targetRadiusM.toInt()}m) : arrêt automatique du suivi 5s pour rappel #$reminderId"
+            android.util.Log.i(TAG, exitMsg)
+            appLogger.i("DIAG_GPS", exitMsg, reminderId)
+            stopTracking()
+            stopSelf()
+            return
+        }
+
         val distFormatted = if (distanceM < 1000f) "${distanceM.toInt()} m" else String.format(Locale.ROOT, "%.2f km", distanceM / 1000f)
         val notifText = "Distance : $distFormatted (±${accuracyM.toInt()}m) | Vitesse : ${speedKmh.toInt()} km/h"
 
         notificationManager.notify(NOTIFICATION_ID, buildNotification(notifText, distanceM, accuracyM, speedKmh))
 
-        val inRadius = distanceM <= targetRadiusM
-        val statusNote = if (inRadius) " 🎯 [DANS LE RAYON ${targetRadiusM.toInt()}m - Déclenchement passif confié à GeofenceBroadcastReceiver]" else ""
+        val statusNote = if (inRadius) " 🎯 [DANS LE RAYON ${targetRadiusM.toInt()}m]" else ""
         val logMsg = "Dist: ${distanceM.toInt()}m (±${accuracyM.toInt()}m)$statusNote | GPS: (${String.format(Locale.ROOT, "%.5f", loc.latitude)}, ${String.format(Locale.ROOT, "%.5f", loc.longitude)}) | Vit: ${speedKmh.toInt()} km/h"
         
         android.util.Log.d(TAG, logMsg)
@@ -177,14 +196,29 @@ class DiagnosticLocationService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val completeIntent = Intent(this, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_COMPLETE
+            putExtra(NotificationActionReceiver.EXTRA_REMINDER_ID, reminderId)
+        }
+        val completePendingIntent = PendingIntent.getBroadcast(
+            this,
+            reminderId.toInt() * 10 + 2,
+            completeIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val inRadius = distanceM > 0f && distanceM <= targetRadiusM
+        val title = if (inRadius) "📍 Dans la zone : $reminderText" else "📡 Surveillance active : $reminderText"
+
         return NotificationCompat.Builder(this, NotificationChannels.DIAGNOSTIC_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setContentTitle("📡 Surveillance active : $reminderText")
+            .setSmallIcon(if (inRadius) android.R.drawable.ic_dialog_map else android.R.drawable.ic_menu_compass)
+            .setContentTitle(title)
             .setContentText(statusText)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setContentIntent(openPendingIntent)
+            .addAction(android.R.drawable.checkbox_on_background, "Terminer", completePendingIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Arrêter", stopPendingIntent)
             .build()
     }
@@ -206,5 +240,7 @@ class DiagnosticLocationService : Service() {
         const val EXTRA_TARGET_LAT = "extra_target_lat"
         const val EXTRA_TARGET_LNG = "extra_target_lng"
         const val EXTRA_TARGET_RADIUS_M = "extra_target_radius_m"
+        const val EXTRA_AUTO_STOP_ON_EXIT = "extra_auto_stop_on_exit"
     }
 }
+

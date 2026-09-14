@@ -39,6 +39,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     @Inject
     lateinit var appLogger: AppLogger
 
+    @Inject
+    lateinit var diagnosticTracker: DiagnosticLocationTracker
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -257,9 +260,14 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
                             val updatedReminder = reminder.copy(
                                 placeLabel = detectedPlaceName ?: reminder.placeLabel,
-                                status = if (reminder.isRepeating) ReminderStatus.ACTIVE else ReminderStatus.COMPLETED
+                                status = ReminderStatus.ACTIVE
                             )
                             reminderRepository.save(updatedReminder)
+
+                            // Démarrage automatique du suivi live 5s dans la zone (avec arrêt automatique à la sortie)
+                            if (reminder.placeLat != null && reminder.placeLng != null) {
+                                diagnosticTracker.startLiveZoneTracking(context, reminder)
+                            }
 
                             // Option 2 (Mutual Cancellation) : Le lieu s'étant déclenché, annuler l'alarme d'échéance programmée
                             if (reminder.triggerType == com.remindly.domain.model.TriggerType.BOTH || reminder.triggerTimeMillis != null) {
@@ -272,25 +280,22 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             if (reminder.isRepeating) {
                                 // Mode HABITUDE / RÉPÉTITIF :
                                 // On maintient le geofence armé pour les prochains passages.
-                                // Le cooldown (last_trigger_time_${reminderId}) évite que ça sonne en boucle tant qu'on reste sur place.
                                 appLogger.i(
                                     "HABIT_KEPT_ACTIVE",
                                     "Rappel récurrent/habitude #${reminder.id} maintenu ACTIF pour les prochains passages.",
                                     reminderId
                                 )
                             } else {
-                                // Mode UNE SEULE FOIS :
-                                // Clôture et désarmement de la géofence
-                                if (reminder.placeCategory == null) {
-                                    geofenceManager.removeGeofence(reminderId)
-                                } else {
+                                // Mode STANDARD : le rappel reste ACTIF dans la liste (l'utilisateur cochera manuellement).
+                                // Pour les catégories POI, on désarme le POI spécifique déclenché pour éviter de sonner en boucle.
+                                if (reminder.placeCategory != null) {
                                     geofenceManager.removeSingleGeofence(geofence.requestId)
+                                    prefs.edit()
+                                        .remove("place_name_${geofence.requestId}")
+                                        .remove("place_lat_${geofence.requestId}")
+                                        .remove("place_lng_${geofence.requestId}")
+                                        .apply()
                                 }
-                                prefs.edit()
-                                    .remove("place_name_${geofence.requestId}")
-                                    .remove("place_lat_${geofence.requestId}")
-                                    .remove("place_lng_${geofence.requestId}")
-                                    .apply()
                             }
                         }
                     }
