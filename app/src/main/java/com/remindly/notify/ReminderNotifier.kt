@@ -18,11 +18,20 @@ class ReminderNotifier(private val context: Context) {
         showReminder(reminder, false, null)
     }
 
-    fun showPlaceReminder(reminder: Reminder, detectedPlaceName: String? = null) {
-        showReminder(reminder, true, detectedPlaceName)
+    fun showPlaceReminder(
+        reminder: Reminder,
+        detectedPlaceName: String? = null,
+        distanceMeters: Float? = null
+    ) {
+        showReminder(reminder, isPlace = true, detectedPlaceName = detectedPlaceName, distanceMeters = distanceMeters)
     }
 
-    private fun showReminder(reminder: Reminder, isPlace: Boolean, detectedPlaceName: String? = null) {
+    private fun showReminder(
+        reminder: Reminder,
+        isPlace: Boolean,
+        detectedPlaceName: String? = null,
+        distanceMeters: Float? = null
+    ) {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
@@ -59,7 +68,22 @@ class ReminderNotifier(private val context: Context) {
 
         val placeInfo = detectedPlaceName ?: reminder.placeLabel
         val channelId = if (isPlace) NotificationChannels.PLACE_CHANNEL_ID else NotificationChannels.TIME_CHANNEL_ID
-        val titleText = if (isPlace && !placeInfo.isNullOrBlank()) "📍 $placeInfo" else "Rappel"
+
+        val distFormatted = if (distanceMeters != null && distanceMeters >= 0f) {
+            if (distanceMeters < 1000f) {
+                "${distanceMeters.toInt()} m"
+            } else {
+                String.format(java.util.Locale.getDefault(), "%.1f km", distanceMeters / 1000f)
+            }
+        } else null
+
+        val titleText = when {
+            isPlace && !placeInfo.isNullOrBlank() && distFormatted != null -> "📍 $placeInfo • $distFormatted"
+            isPlace && !placeInfo.isNullOrBlank() -> "📍 $placeInfo"
+            isPlace && distFormatted != null -> "📍 Rappel de lieu • $distFormatted"
+            isPlace -> "📍 Rappel de lieu"
+            else -> "Rappel"
+        }
 
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(if (isPlace) android.R.drawable.ic_dialog_map else android.R.drawable.ic_lock_idle_alarm)
@@ -68,18 +92,29 @@ class ReminderNotifier(private val context: Context) {
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .addAction(android.R.drawable.ic_popup_sync, "Reporter (+15m)", snoozePendingIntent)
             .addAction(android.R.drawable.checkbox_on_background, "Terminer", completePendingIntent)
-            
+
+        if (distFormatted != null) {
+            builder.setSubText("à $distFormatted")
+        }
+
         val imageAttachment = reminder.attachments.firstOrNull { it.type == com.remindly.domain.model.AttachmentType.IMAGE }
         val audioAttachment = reminder.attachments.firstOrNull { it.type == com.remindly.domain.model.AttachmentType.AUDIO }
-        
+
         var textContent = reminder.text ?: "Rappel"
-        if (isPlace && !placeInfo.isNullOrBlank() && titleText != "📍 $placeInfo") {
-            textContent += "\n📍 $placeInfo"
+        if (isPlace) {
+            if (!placeInfo.isNullOrBlank() && distFormatted != null) {
+                textContent += "\n📍 $placeInfo (à $distFormatted)"
+            } else if (!placeInfo.isNullOrBlank()) {
+                textContent += "\n📍 $placeInfo"
+            } else if (distFormatted != null) {
+                textContent += "\n📍 À $distFormatted"
+            }
         }
 
         if (imageAttachment != null) {

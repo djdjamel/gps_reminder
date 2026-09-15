@@ -15,10 +15,14 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.google.android.gms.location.*
 import com.remindly.MainActivity
+import com.remindly.data.repo.ReminderRepository
+import com.remindly.domain.model.ReminderStatus
 import com.remindly.notify.NotificationActionReceiver
 import com.remindly.notify.NotificationChannels
+import com.remindly.notify.ReminderNotifier
 import com.remindly.util.AppLogger
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.*
 import java.util.Locale
 import javax.inject.Inject
 
@@ -30,6 +34,11 @@ class DiagnosticLocationService : Service() {
 
     @Inject
     lateinit var appLogger: AppLogger
+
+    @Inject
+    lateinit var reminderRepository: ReminderRepository
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var notificationManager: NotificationManager
@@ -163,6 +172,23 @@ class DiagnosticLocationService : Service() {
 
         notificationManager.notify(NOTIFICATION_ID, buildNotification(notifText, distanceM, accuracyM, speedKmh))
 
+        // Mise à jour en direct de la notification de rappel avec la distance actuelle
+        if (reminderId != -1L) {
+            serviceScope.launch {
+                try {
+                    val rem = reminderRepository.getById(reminderId)
+                    if (rem != null && rem.status == ReminderStatus.ACTIVE) {
+                        val notifier = ReminderNotifier(this@DiagnosticLocationService)
+                        notifier.showPlaceReminder(
+                            reminder = rem,
+                            detectedPlaceName = rem.placeLabel,
+                            distanceMeters = distanceM
+                        )
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
         val statusNote = if (inRadius) " 🎯 [DANS LE RAYON ${targetRadiusM.toInt()}m]" else ""
         val logMsg = "Dist: ${distanceM.toInt()}m (±${accuracyM.toInt()}m)$statusNote | GPS: (${String.format(Locale.ROOT, "%.5f", loc.latitude)}, ${String.format(Locale.ROOT, "%.5f", loc.longitude)}) | Vit: ${speedKmh.toInt()} km/h"
         
@@ -225,6 +251,7 @@ class DiagnosticLocationService : Service() {
 
     override fun onDestroy() {
         stopTracking()
+        serviceScope.cancel()
         super.onDestroy()
     }
 

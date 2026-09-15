@@ -52,7 +52,8 @@ class AudioAlarmService : Service() {
         val reminderId: Long,
         val audioPath: String?,
         val reminderText: String,
-        val placeName: String?
+        val placeName: String?,
+        val distanceMeters: Float? = null
     )
 
     private val alarmQueue = ArrayDeque<AlarmRequest>()
@@ -90,15 +91,18 @@ class AudioAlarmService : Service() {
                     return START_NOT_STICKY
                 }
 
+                val distanceMeters = if (intent.hasExtra(EXTRA_DISTANCE_METERS)) intent.getFloatExtra(EXTRA_DISTANCE_METERS, -1f) else null
+
                 val request = AlarmRequest(
                     reminderId = reminderId,
                     audioPath = audioPath,
                     reminderText = reminderText,
-                    placeName = placeName
+                    placeName = placeName,
+                    distanceMeters = distanceMeters
                 )
 
                 alarmQueue.add(request)
-                showForegroundNotification(reminderId, reminderText, placeName)
+                showForegroundNotification(reminderId, reminderText, placeName, distanceMeters)
 
                 processQueueIfNeeded()
             }
@@ -130,7 +134,8 @@ class AudioAlarmService : Service() {
                     showForegroundNotification(
                         currentReq.reminderId,
                         currentReq.reminderText,
-                        currentReq.placeName
+                        currentReq.placeName,
+                        currentReq.distanceMeters
                     )
 
                     if (settings.vibrate) {
@@ -171,7 +176,12 @@ class AudioAlarmService : Service() {
 
     // ─── Notification foreground ────────────────────────────────────────────────
 
-    private fun showForegroundNotification(reminderId: Long, reminderText: String, placeName: String? = null) {
+    private fun showForegroundNotification(
+        reminderId: Long,
+        reminderText: String,
+        placeName: String? = null,
+        distanceMeters: Float? = null
+    ) {
         val stopIntent = Intent(this, AudioAlarmService::class.java).apply {
             action = ACTION_STOP
         }
@@ -191,11 +201,22 @@ class AudioAlarmService : Service() {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .addAction(android.R.drawable.ic_media_pause, "Arrêter", stopPendingIntent)
 
+        val distFormatted = if (distanceMeters != null && distanceMeters >= 0f) {
+            if (distanceMeters < 1000f) "${distanceMeters.toInt()} m" else String.format(java.util.Locale.getDefault(), "%.1f km", distanceMeters / 1000f)
+        } else null
+
         if (!placeName.isNullOrBlank()) {
-            builder.setSubText("📍 $placeName")
+            val distDetail = if (distFormatted != null) " • à $distFormatted" else ""
+            builder.setSubText("📍 $placeName$distDetail")
             builder.setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText("$reminderText\n📍 Détecté à : $placeName")
+                    .bigText("$reminderText\n📍 Détecté à : $placeName$distDetail")
+            )
+        } else if (distFormatted != null) {
+            builder.setSubText("à $distFormatted")
+            builder.setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText("$reminderText\n📍 À $distFormatted du lieu")
             )
         }
 
@@ -381,6 +402,7 @@ class AudioAlarmService : Service() {
         const val EXTRA_REMINDER_TEXT = "extra_reminder_text"
         const val EXTRA_REMINDER_ID   = "extra_reminder_id"
         const val EXTRA_PLACE_NAME    = "extra_place_name"
+        const val EXTRA_DISTANCE_METERS = "extra_distance_meters"
         const val CHANNEL_ID          = "audio_alarm_channel"
         const val NOTIFICATION_ID     = 9999
 
@@ -390,7 +412,8 @@ class AudioAlarmService : Service() {
             audioPath: String? = null,
             reminderText: String,
             reminderId: Long,
-            placeName: String? = null
+            placeName: String? = null,
+            distanceMeters: Float? = null
         ) {
             val intent = Intent(context, AudioAlarmService::class.java).apply {
                 action = ACTION_START
@@ -401,6 +424,9 @@ class AudioAlarmService : Service() {
                 putExtra(EXTRA_REMINDER_ID, reminderId)
                 if (placeName != null) {
                     putExtra(EXTRA_PLACE_NAME, placeName)
+                }
+                if (distanceMeters != null) {
+                    putExtra(EXTRA_DISTANCE_METERS, distanceMeters)
                 }
             }
             context.startForegroundService(intent)

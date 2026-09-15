@@ -204,16 +204,28 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                         }
 
                         var distInfo = ""
-                        if (triggerLoc != null && targetLat != null && targetLng != null) {
+                        var distanceMeters: Float? = null
+
+                        val locForDistance = triggerLoc ?: try {
+                            val fusedClient = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
+                            com.google.android.gms.tasks.Tasks.await(
+                                fusedClient.lastLocation,
+                                1500,
+                                java.util.concurrent.TimeUnit.MILLISECONDS
+                            )
+                        } catch (_: Exception) { null }
+
+                        if (locForDistance != null && targetLat != null && targetLng != null) {
                             val results = FloatArray(1)
                             Location.distanceBetween(
-                                triggerLoc.latitude,
-                                triggerLoc.longitude,
+                                locForDistance.latitude,
+                                locForDistance.longitude,
                                 targetLat,
                                 targetLng,
                                 results
                             )
-                            distInfo = " | Dist: ${results[0].toInt()}m (±${triggerLoc.accuracy.toInt()}m)"
+                            distanceMeters = results[0]
+                            distInfo = " | Dist: ${results[0].toInt()}m (±${locForDistance.accuracy.toInt()}m)"
                         }
 
                         val triggerMsg = "Transition $transitionName sur '${detectedPlaceName ?: reminder.placeLabel ?: "Lieu inconnu"}'$distInfo"
@@ -233,7 +245,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 prefs.edit().putLong("last_trigger_time_${reminderId}", now).apply()
                                 
                                 val notifier = ReminderNotifier(context)
-                                notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName)
+                                notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName, distanceMeters = distanceMeters)
 
                                 val shouldStartAudioService = (audioAttachment != null) ||
                                     ((settings.readTextRemindersAloud || settings.announcePlaceByVoice) && !reminder.text.isNullOrBlank())
@@ -245,7 +257,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                             audioPath = audioAttachment?.localPath,
                                             reminderText = reminder.text ?: "Rappel",
                                             reminderId = reminder.id,
-                                            placeName = detectedPlaceName ?: reminder.placeLabel
+                                            placeName = detectedPlaceName ?: reminder.placeLabel,
+                                            distanceMeters = distanceMeters
                                         )
                                         appLogger.success("NOTIFICATION_FIRED", "Alarme vocale/TTS lancée", reminderId)
                                     } catch (e: Exception) {
@@ -257,19 +270,21 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 }
                             } else {
                                 val notifier = ReminderNotifier(context)
-                                notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName)
+                                notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName, distanceMeters = distanceMeters)
                                 appLogger.i("NOTIFICATION_FIRED", "Notification mise à jour pour '${detectedPlaceName ?: reminder.placeLabel}' (Cooldown de ${settings.geofenceCooldownSeconds}s actif)", reminderId)
                             }
 
                             val updatedReminder = reminder.copy(
                                 placeLabel = detectedPlaceName ?: reminder.placeLabel,
+                                placeLat = targetLat,
+                                placeLng = targetLng,
                                 status = ReminderStatus.ACTIVE
                             )
                             reminderRepository.save(updatedReminder)
 
                             // Démarrage automatique du suivi live 5s dans la zone (avec arrêt automatique à la sortie)
-                            if (reminder.placeLat != null && reminder.placeLng != null) {
-                                diagnosticTracker.startLiveZoneTracking(context, reminder)
+                            if (targetLat != null && targetLng != null) {
+                                diagnosticTracker.startLiveZoneTracking(context, updatedReminder)
                             }
 
                             // Option 2 (Mutual Cancellation) : Le lieu s'étant déclenché, annuler l'alarme d'échéance programmée
