@@ -1,6 +1,7 @@
 package com.remindly.ui.settings
 
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings as AndroidSettings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -963,6 +964,52 @@ fun SettingsScreen(
                         context.startActivity(intent)
                     }
                 )
+            }
+
+            // ─── Section : Optimisation Batterie & Arrière-plan ───────────────
+            SettingsCard(
+                title = strings.settingsBatterySectionTitle,
+                subtitle = strings.settingsBatterySectionSubtitle,
+                icon = Icons.Filled.BatteryChargingFull,
+                iconColor = MaterialTheme.colorScheme.primary
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = strings.settingsBatteryOptimizeDescription,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Button(
+                        onClick = {
+                            try {
+                                val intent = Intent(AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                }
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                try {
+                                    val fallbackIntent = Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                    context.startActivity(fallbackIntent)
+                                } catch (_: Exception) {}
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            Icons.Filled.PowerSettingsNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(strings.settingsBatteryOptimizeButton)
+                    }
+                }
             }
 
             // ─── Section 4 : Diagnostic & Logs ───────────────────────────────

@@ -30,15 +30,13 @@ class AlarmReceiver : BroadcastReceiver() {
     @Inject
     lateinit var appLogger: com.remindly.util.AppLogger
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
     override fun onReceive(context: Context, intent: Intent) {
         val reminderId = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
         if (reminderId == -1L) return
 
         val pendingResult = goAsync()
 
-        scope.launch {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 val reminder = reminderRepository.getById(reminderId) ?: return@launch
                 if (reminder.status != ReminderStatus.ACTIVE) return@launch

@@ -10,6 +10,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.remindly.location.ReRegisterGeofencesWorker
 import com.remindly.notify.NotificationChannels
 import com.remindly.sync.SharedReminderSyncManager
 import com.remindly.sync.SharedReminderSyncWorker
@@ -40,6 +41,20 @@ class RemindlyApp : Application(), Configuration.Provider {
 
         // Filet de livraison en arrière-plan (app fermée) + rattrapage immédiat au lancement.
         scheduleSharedReminderSync()
+
+        // Filet de sécurité : réenregistrement périodique des géofences (toutes les 6h)
+        scheduleGeofenceRefresh()
+    }
+
+    private fun scheduleGeofenceRefresh() {
+        val geofenceRefresh = PeriodicWorkRequestBuilder<ReRegisterGeofencesWorker>(
+            6, TimeUnit.HOURS
+        ).build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "geofence_periodic_refresh",
+            ExistingPeriodicWorkPolicy.KEEP,
+            geofenceRefresh
+        )
     }
 
     private fun scheduleSharedReminderSync() {

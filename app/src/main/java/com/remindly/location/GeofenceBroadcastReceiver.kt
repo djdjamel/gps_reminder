@@ -42,8 +42,6 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     @Inject
     lateinit var diagnosticTracker: DiagnosticLocationTracker
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
     override fun onReceive(context: Context, intent: Intent) {
         val geofencingEvent = GeofencingEvent.fromIntent(intent)
         if (geofencingEvent == null) {
@@ -76,7 +74,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             val prefs = context.getSharedPreferences("geofence_tracking", Context.MODE_PRIVATE)
 
-            scope.launch {
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                 try {
                     val handledReminderIds = mutableSetOf<Long>()
                     for (geofence in triggeringGeofences) {
@@ -180,6 +178,11 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                         val settings = settingsRepository.getSettings()
                         val targetRadiusM = reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
 
+                        val isFixedPlace = reminder.placeCategory == null
+                        if (isFixedPlace) {
+                            appLogger.i("GEOFENCE_FILTER_BYPASS", "Filtre intelligent contourné pour lieu fixe '${reminder.placeLabel}'", reminderId)
+                        }
+
                         // Validation de Pertinence et d'Accessibilité (Anti-autoroute, Cap de déplacement, Précision GPS proportionnelle à 30% du rayon)
                         val triggerLoc = geofencingEvent.triggeringLocation
                         val relevance = GeofenceFilterUtils.evaluateRelevance(
@@ -187,7 +190,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             poiLat = targetLat,
                             poiLng = targetLng,
                             radiusM = targetRadiusM,
-                            enabled = settings.smartGeofenceFiltering,
+                            enabled = settings.smartGeofenceFiltering && reminder.placeCategory != null,
                             maxSpeedKmh = settings.maxFilterSpeedKmh.toFloat(),
                             maxHeadingAngle = 75f
                         )

@@ -230,6 +230,7 @@ class DetailViewModel @Inject constructor(
                         alarmScheduler.scheduleDeferredGeofence(savedReminder, savedReminder.placeActiveFromMillis)
                         appLogger.i("DEFERRED_GEOFENCE_SCHEDULED", "Armement différé programmé pour ${savedReminder.placeActiveFromMillis}", savedId)
                     } else {
+                        geofenceManager.removeGeofence(savedId)
                         geofenceManager.addGeofence(savedReminder)
                     }
                 }

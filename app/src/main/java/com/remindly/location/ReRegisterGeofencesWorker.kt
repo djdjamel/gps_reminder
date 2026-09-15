@@ -19,21 +19,26 @@ class ReRegisterGeofencesWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         try {
+            android.util.Log.i("GeofenceRefresh", "Réenregistrement périodique des géofences lancé")
             val activeReminders = reminderRepository.observePersonalActive().first()
             val locationReminders = activeReminders.filter { 
                 (it.placeLat != null && it.placeLng != null) || it.placeCategory != null 
             }
             
             val now = System.currentTimeMillis()
+            var count = 0
             for (reminder in locationReminders) {
                 if (reminder.placeActiveFromMillis != null && reminder.placeActiveFromMillis > now) {
                     continue
                 }
                 geofenceManager.addGeofence(reminder)
+                count++
             }
 
+            android.util.Log.i("GeofenceRefresh", "$count géofences réenregistrées avec succès")
             return Result.success()
         } catch (e: Exception) {
+            android.util.Log.e("GeofenceRefresh", "Erreur réenregistrement périodique géofences: ${e.message}", e)
             e.printStackTrace()
             return Result.retry()
         }

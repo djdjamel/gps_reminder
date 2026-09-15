@@ -209,7 +209,12 @@ data class AppStrings(
     val settingsNotConnected: String,
     val settingsLogout: String,
     val settingsLogoutConfirmTitle: String,
-    val settingsLogoutConfirmMessage: String
+    val settingsLogoutConfirmMessage: String,
+    // Section Optimisation Batterie
+    val settingsBatterySectionTitle: String,
+    val settingsBatterySectionSubtitle: String,
+    val settingsBatteryOptimizeButton: String,
+    val settingsBatteryOptimizeDescription: String
 )
 
 val FrenchStrings = AppStrings(
@@ -407,7 +412,11 @@ val FrenchStrings = AppStrings(
     settingsNotConnected = "Non connecté",
     settingsLogout = "Déconnexion",
     settingsLogoutConfirmTitle = "Se déconnecter ?",
-    settingsLogoutConfirmMessage = "Vous devrez vous reconnecter pour synchroniser vos rappels."
+    settingsLogoutConfirmMessage = "Vous devrez vous reconnecter pour synchroniser vos rappels.",
+    settingsBatterySectionTitle = "Optimisation Batterie & Arrière-plan",
+    settingsBatterySectionSubtitle = "Nécessaire pour le fonctionnement fiable du GPS et des géofences",
+    settingsBatteryOptimizeButton = "Désactiver les restrictions de batterie",
+    settingsBatteryOptimizeDescription = "Sur les appareils Xiaomi (MIUI/HyperOS), Huawei et Samsung, le système coupe agressivement les processus d'arrière-plan. Autorisez l'exécution sans restriction pour garantir le déclenchement de vos rappels de lieu."
 )
 
 val ArabicStrings = AppStrings(
@@ -605,7 +614,11 @@ val ArabicStrings = AppStrings(
     settingsNotConnected = "غير متصل",
     settingsLogout = "تسجيل الخروج",
     settingsLogoutConfirmTitle = "هل تريد تسجيل الخروج؟",
-    settingsLogoutConfirmMessage = "ستحتاج إلى تسجيل الدخول مجدداً لمزامنة تذكيراتك."
+    settingsLogoutConfirmMessage = "ستحتاج إلى تسجيل الدخول مجدداً لمزامنة تذكيراتك.",
+    settingsBatterySectionTitle = "تحسين البطارية والعمل في الخلفية",
+    settingsBatterySectionSubtitle = "ضروري لضمان دقة واستجابة تنبيهات الموقع الجغرافي (GPS)",
+    settingsBatteryOptimizeButton = "تعطيل قيود البطارية",
+    settingsBatteryOptimizeDescription = "على أجهزة Xiaomi وSamsung وأنظمة أندرويد الحديثة، يوقف النظام التطبيقات في الخلفية لتوفير الطاقة. يرجى إزالة القيود لضمان رنين تذكيرات الأماكن في الوقت المحدد."
 )
 
 val EnglishStrings = AppStrings(
@@ -803,7 +816,11 @@ val EnglishStrings = AppStrings(
     settingsNotConnected = "Not signed in",
     settingsLogout = "Sign out",
     settingsLogoutConfirmTitle = "Sign out?",
-    settingsLogoutConfirmMessage = "You will need to sign in again to sync your reminders."
+    settingsLogoutConfirmMessage = "You will need to sign in again to sync your reminders.",
+    settingsBatterySectionTitle = "Battery & Background Optimization",
+    settingsBatterySectionSubtitle = "Essential for reliable GPS geofence triggers in background",
+    settingsBatteryOptimizeButton = "Disable battery restrictions",
+    settingsBatteryOptimizeDescription = "On Xiaomi (MIUI/HyperOS), Huawei, and Samsung devices, the system aggressively stops background services. Exclude Remindly from battery optimization to ensure place reminders trigger reliably."
 )
 
 fun getAppStrings(languageCode: String): AppStrings {

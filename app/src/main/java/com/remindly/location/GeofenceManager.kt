@@ -125,7 +125,8 @@ class GeofenceManager @Inject constructor(
                         reminder.placeLat,
                         reminder.placeLng,
                         radius,
-                        reminder.id
+                        reminder.id,
+                        responsivenessMs = 0  // Réactivité maximale pour lieu fixe
                     )
                 }
             } catch (t: Throwable) {
@@ -340,14 +341,21 @@ class GeofenceManager @Inject constructor(
     }
 
     @SuppressLint("MissingPermission")
-    private fun registerSingleGeofence(requestId: String, lat: Double, lng: Double, radius: Float, reminderId: Long? = null) {
+    private fun registerSingleGeofence(
+        requestId: String,
+        lat: Double,
+        lng: Double,
+        radius: Float,
+        reminderId: Long? = null,
+        responsivenessMs: Int = 3000
+    ) {
         val geofence = Geofence.Builder()
             .setRequestId(requestId)
             .setCircularRegion(lat, lng, radius)
             .setExpirationDuration(Geofence.NEVER_EXPIRE)
             .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_DWELL)
             .setLoiteringDelay(8000)
-            .setNotificationResponsiveness(3000)
+            .setNotificationResponsiveness(responsivenessMs)
             .build()
 
         val request = GeofencingRequest.Builder()

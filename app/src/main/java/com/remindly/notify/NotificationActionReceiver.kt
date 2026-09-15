@@ -30,15 +30,13 @@ class NotificationActionReceiver : BroadcastReceiver() {
     @Inject
     lateinit var diagnosticTracker: com.remindly.location.DiagnosticLocationTracker
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
     override fun onReceive(context: Context, intent: Intent) {
         val reminderId = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
         if (reminderId == -1L) return
 
         val pendingResult = goAsync()
 
-        scope.launch {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 when (intent.action) {
                     ACTION_COMPLETE -> {
@@ -66,7 +64,9 @@ class NotificationActionReceiver : BroadcastReceiver() {
                         val audioPath = intent.getStringExtra(EXTRA_AUDIO_PATH)
                         if (audioPath != null) {
                             try {
+                                mediaPlayer?.stop()
                                 mediaPlayer?.release()
+                                mediaPlayer = null
                                 mediaPlayer = android.media.MediaPlayer().apply {
                                     setDataSource(audioPath)
                                     prepare()
@@ -75,8 +75,15 @@ class NotificationActionReceiver : BroadcastReceiver() {
                                         it.release()
                                         if (mediaPlayer == this) mediaPlayer = null
                                     }
+                                    setOnErrorListener { mp, _, _ ->
+                                        mp.release()
+                                        if (mediaPlayer == mp) mediaPlayer = null
+                                        true
+                                    }
                                 }
                             } catch (e: Exception) {
+                                mediaPlayer?.release()
+                                mediaPlayer = null
                                 e.printStackTrace()
                             }
                         }
