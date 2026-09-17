@@ -35,7 +35,9 @@ data class VoiceAlarmSettings(
     val commuteEndLabel: String? = null,
     val commuteRoutePolyline: String? = null,
     // Moniteur passif de localisation pour analyser les calculs de Google Play Services (0% batterie)
-    val passiveLocationMonitoring: Boolean = false
+    val passiveLocationMonitoring: Boolean = false,
+    // Détection automatique de transition de véhicule (Activity Recognition) pour pulse GPS 40s
+    val autoVehicleDetection: Boolean = true
 ) {
     val hasCommuteRoute: Boolean
         get() = commuteStartLat != null && commuteStartLng != null &&

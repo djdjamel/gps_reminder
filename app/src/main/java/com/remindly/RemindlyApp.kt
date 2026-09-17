@@ -34,6 +34,9 @@ class RemindlyApp : Application(), Configuration.Provider {
     lateinit var passiveLocationManager: com.remindly.location.PassiveLocationManager
 
     @Inject
+    lateinit var vehicleModeManager: com.remindly.location.VehicleModeManager
+
+    @Inject
     lateinit var settingsRepository: com.remindly.data.settings.VoiceAlarmSettingsRepository
 
     override val workManagerConfiguration: Configuration
@@ -54,11 +57,15 @@ class RemindlyApp : Application(), Configuration.Provider {
         // Filet de sécurité : réenregistrement périodique des géofences (toutes les 6h)
         scheduleGeofenceRefresh()
 
-        // Moniteur passif : démarrage au lancement si activé
+        // Moniteur passif & Détection d'activité : démarrage au lancement si activés
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                if (settingsRepository.getSettings().passiveLocationMonitoring) {
+                val settings = settingsRepository.getSettings()
+                if (settings.passiveLocationMonitoring) {
                     passiveLocationManager.start()
+                }
+                if (settings.autoVehicleDetection) {
+                    vehicleModeManager.startMonitoring()
                 }
             } catch (_: Exception) {}
         }

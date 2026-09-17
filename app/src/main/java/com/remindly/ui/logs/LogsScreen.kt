@@ -83,6 +83,7 @@ fun LogsScreen(
             // Filtres rapides
             val filterOptions = listOf(
                 null to "Tous",
+                "ACTIVITY_REC" to "Activité & Trajets",
                 "PASSIVE_LOC" to "Timeline GPS/GMS",
                 "ROLLING_ZONE" to "Fenêtre Glissante",
                 "POI_DETAIL" to "Détails POIs",
@@ -167,6 +168,7 @@ private fun LogCard(
         log.level == "SUCCESS" -> Color(0xFF10B981).copy(alpha = 0.15f) to Color(0xFF10B981)
         log.level == "ERROR" -> Color(0xFFEF4444).copy(alpha = 0.15f) to Color(0xFFEF4444)
         log.level == "WARN" -> Color(0xFFF59E0B).copy(alpha = 0.15f) to Color(0xFFF59E0B)
+        log.tag == "ACTIVITY_REC" -> Color(0xFFEC4899).copy(alpha = 0.15f) to Color(0xFFEC4899)
         log.tag == "PASSIVE_LOC" -> Color(0xFF6366F1).copy(alpha = 0.15f) to Color(0xFF6366F1)
         else -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
     }

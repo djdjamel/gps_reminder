@@ -216,7 +216,9 @@ data class AppStrings(
     val settingsBatteryOptimizeButton: String,
     val settingsBatteryOptimizeDescription: String,
     val settingsPassiveLocationTitle: String,
-    val settingsPassiveLocationSubtitle: String
+    val settingsPassiveLocationSubtitle: String,
+    val settingsAutoVehicleTitle: String,
+    val settingsAutoVehicleSubtitle: String
 )
 
 val FrenchStrings = AppStrings(
@@ -420,7 +422,9 @@ val FrenchStrings = AppStrings(
     settingsBatteryOptimizeButton = "Désactiver les restrictions de batterie",
     settingsBatteryOptimizeDescription = "Sur les appareils Xiaomi (MIUI/HyperOS), Huawei et Samsung, le système coupe agressivement les processus d'arrière-plan. Autorisez l'exécution sans restriction pour garantir le déclenchement de vos rappels de lieu.",
     settingsPassiveLocationTitle = "Moniteur d'écoute passive (Timeline)",
-    settingsPassiveLocationSubtitle = "Enregistre chaque calcul de position système (GMS, Maps) à 0% batterie pour analyser les délais et trous de détection."
+    settingsPassiveLocationSubtitle = "Capture en temps réel les calculs de position de Google Play Services sans consommer de batterie pour diagnostiquer les déclenchements.",
+    settingsAutoVehicleTitle = "Mode Conduite Intelligent",
+    settingsAutoVehicleSubtitle = "Détecte automatiquement les trajets en voiture pour éliminer les retards GPS (pulse à 40s uniquement en route)."
 )
 
 val ArabicStrings = AppStrings(
@@ -624,7 +628,9 @@ val ArabicStrings = AppStrings(
     settingsBatteryOptimizeButton = "تعطيل قيود البطارية",
     settingsBatteryOptimizeDescription = "على أجهزة Xiaomi وSamsung وأنظمة أندرويد الحديثة، يوقف النظام التطبيقات في الخلفية لتوفير الطاقة. يرجى إزالة القيود لضمان رنين تذكيرات الأماكن في الوقت المحدد.",
     settingsPassiveLocationTitle = "مراقب الموقع السلبي (الجدول الزمني)",
-    settingsPassiveLocationSubtitle = "يسجل كل حساب موقع من خدمات Google وMaps دون استهلاك البطارية لتحليل دقة وفجوات التنبيهات."
+    settingsPassiveLocationSubtitle = "تسجيل نقاط الموقع التي تحسبها خدمات Google Play في الوقت الفعلي دون استهلاك البطارية لتشخيص التنبيهات.",
+    settingsAutoVehicleTitle = "وضع القيادة الذكي",
+    settingsAutoVehicleSubtitle = "يكتشف تلقائيًا قيادة السيارة للقضاء على تأخير التنبيهات (تحديث كل 40 ثانية فقط أثناء القيادة)."
 )
 
 val EnglishStrings = AppStrings(
@@ -828,7 +834,9 @@ val EnglishStrings = AppStrings(
     settingsBatteryOptimizeButton = "Disable battery restrictions",
     settingsBatteryOptimizeDescription = "On Xiaomi (MIUI/HyperOS), Huawei, and Samsung devices, the system aggressively stops background services. Exclude Remindly from battery optimization to ensure place reminders trigger reliably.",
     settingsPassiveLocationTitle = "Passive Location Monitor (Timeline)",
-    settingsPassiveLocationSubtitle = "Records every system location fix (GMS, Maps) with 0% battery impact to analyze detection delays and blind spots."
+    settingsPassiveLocationSubtitle = "Real-time capture of Google Play Services location calculations without battery drain to diagnose triggers.",
+    settingsAutoVehicleTitle = "Smart Driving Mode",
+    settingsAutoVehicleSubtitle = "Automatically detects car drives to eliminate GPS delays (40s pulse only while driving)."
 )
 
 fun getAppStrings(languageCode: String): AppStrings {

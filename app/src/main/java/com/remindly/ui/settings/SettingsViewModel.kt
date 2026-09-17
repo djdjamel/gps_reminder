@@ -27,6 +27,7 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: VoiceAlarmSettingsRepository,
     private val authManager: AuthManager,
     private val passiveLocationManager: com.remindly.location.PassiveLocationManager,
+    private val vehicleModeManager: com.remindly.location.VehicleModeManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -215,6 +216,17 @@ class SettingsViewModel @Inject constructor(
                 passiveLocationManager.start()
             } else {
                 passiveLocationManager.stop()
+            }
+        }
+    }
+
+    fun updateAutoVehicleDetection(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setAutoVehicleDetection(enabled)
+            if (enabled) {
+                vehicleModeManager.startMonitoring()
+            } else {
+                vehicleModeManager.stopMonitoring()
             }
         }
     }

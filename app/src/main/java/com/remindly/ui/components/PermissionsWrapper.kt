@@ -31,6 +31,9 @@ fun PermissionsWrapper(content: @Composable () -> Unit) {
         android.Manifest.permission.RECORD_AUDIO,
         android.Manifest.permission.CAMERA
     )
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        permissions.add(android.Manifest.permission.ACTIVITY_RECOGNITION)
+    }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         permissions.add(android.Manifest.permission.POST_NOTIFICATIONS)
     }

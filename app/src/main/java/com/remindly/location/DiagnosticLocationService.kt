@@ -38,6 +38,9 @@ class DiagnosticLocationService : Service() {
     @Inject
     lateinit var reminderRepository: ReminderRepository
 
+    @Inject
+    lateinit var vehicleModeManager: VehicleModeManager
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
@@ -127,6 +130,9 @@ class DiagnosticLocationService : Service() {
             locationCallback,
             Looper.getMainLooper()
         )
+
+        // Met en pause le pulse de conduite pour éviter tout conflit ou double notification
+        vehicleModeManager.pausePulseForZoneTracking()
     }
 
     private fun stopTracking() {
@@ -138,6 +144,9 @@ class DiagnosticLocationService : Service() {
             appLogger.i("DIAG_GPS", stopMsg, reminderId)
             tracker.stopDiagnostic(this)
             stopForeground(STOP_FOREGROUND_REMOVE)
+
+            // Reprend le pulse de conduite si toujours en véhicule
+            vehicleModeManager.resumePulseAfterZoneTracking()
         }
     }
 

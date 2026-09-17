@@ -9,6 +9,7 @@ object NotificationChannels {
     const val TIME_CHANNEL_ID = "reminders_time"
     const val PLACE_CHANNEL_ID = "reminders_place"
     const val DIAGNOSTIC_CHANNEL_ID = "diagnostic_gps"
+    const val DRIVING_CHANNEL_ID = "driving_mode"
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -47,9 +48,21 @@ object NotificationChannels {
                 setShowBadge(false)
             }
 
+            val drivingChannel = NotificationChannel(
+                DRIVING_CHANNEL_ID,
+                "Mode Conduite Intelligent",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Notification discrète du mode conduite intelligent pour éviter les retards GPS."
+                enableVibration(false)
+                enableLights(false)
+                setShowBadge(false)
+            }
+
             notificationManager.createNotificationChannel(timeChannel)
             notificationManager.createNotificationChannel(placeChannel)
             notificationManager.createNotificationChannel(diagnosticChannel)
+            notificationManager.createNotificationChannel(drivingChannel)
         }
     }
 }
