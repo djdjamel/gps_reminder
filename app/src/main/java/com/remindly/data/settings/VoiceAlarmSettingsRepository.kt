@@ -48,6 +48,7 @@ interface VoiceAlarmSettingsRepository {
         polyline: String?
     )
     suspend fun clearCommuteRoute()
+    suspend fun setPassiveLocationMonitoring(enabled: Boolean)
 }
 
 class VoiceAlarmSettingsRepositoryImpl(
@@ -78,6 +79,7 @@ class VoiceAlarmSettingsRepositoryImpl(
         val KEY_COMMUTE_END_LNG = doublePreferencesKey("commute_end_lng")
         val KEY_COMMUTE_END_LABEL = stringPreferencesKey("commute_end_label")
         val KEY_COMMUTE_ROUTE_POLYLINE = stringPreferencesKey("commute_route_polyline")
+        val KEY_PASSIVE_LOCATION_MONITORING = booleanPreferencesKey("passive_location_monitoring")
     }
 
     override val settingsFlow: Flow<VoiceAlarmSettings> = dataStore.data
@@ -110,7 +112,8 @@ class VoiceAlarmSettingsRepositoryImpl(
                 commuteEndLat = preferences[PreferencesKeys.KEY_COMMUTE_END_LAT],
                 commuteEndLng = preferences[PreferencesKeys.KEY_COMMUTE_END_LNG],
                 commuteEndLabel = preferences[PreferencesKeys.KEY_COMMUTE_END_LABEL],
-                commuteRoutePolyline = preferences[PreferencesKeys.KEY_COMMUTE_ROUTE_POLYLINE]
+                commuteRoutePolyline = preferences[PreferencesKeys.KEY_COMMUTE_ROUTE_POLYLINE],
+                passiveLocationMonitoring = preferences[PreferencesKeys.KEY_PASSIVE_LOCATION_MONITORING] ?: false
             )
         }
 
@@ -251,6 +254,12 @@ class VoiceAlarmSettingsRepositoryImpl(
             preferences.remove(PreferencesKeys.KEY_COMMUTE_END_LNG)
             preferences.remove(PreferencesKeys.KEY_COMMUTE_END_LABEL)
             preferences.remove(PreferencesKeys.KEY_COMMUTE_ROUTE_POLYLINE)
+        }
+    }
+
+    override suspend fun setPassiveLocationMonitoring(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.KEY_PASSIVE_LOCATION_MONITORING] = enabled
         }
     }
 }

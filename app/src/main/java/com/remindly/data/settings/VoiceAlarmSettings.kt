@@ -33,7 +33,9 @@ data class VoiceAlarmSettings(
     val commuteEndLat: Double? = null,
     val commuteEndLng: Double? = null,
     val commuteEndLabel: String? = null,
-    val commuteRoutePolyline: String? = null
+    val commuteRoutePolyline: String? = null,
+    // Moniteur passif de localisation pour analyser les calculs de Google Play Services (0% batterie)
+    val passiveLocationMonitoring: Boolean = false
 ) {
     val hasCommuteRoute: Boolean
         get() = commuteStartLat != null && commuteStartLng != null &&

@@ -26,6 +26,7 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: VoiceAlarmSettingsRepository,
     private val authManager: AuthManager,
+    private val passiveLocationManager: com.remindly.location.PassiveLocationManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -205,6 +206,17 @@ class SettingsViewModel @Inject constructor(
             previewPlayer = null
         } catch (_: Exception) {}
         _isTestingVolume.value = false
+    }
+
+    fun updatePassiveLocationMonitoring(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setPassiveLocationMonitoring(enabled)
+            if (enabled) {
+                passiveLocationManager.start()
+            } else {
+                passiveLocationManager.stop()
+            }
+        }
     }
 
     fun signOut() {

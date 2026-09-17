@@ -1019,6 +1019,50 @@ fun SettingsScreen(
                 icon = Icons.Filled.BugReport,
                 iconColor = MaterialTheme.colorScheme.tertiary
             ) {
+                // 1. Commutateur d'écoute passive
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { viewModel.updatePassiveLocationMonitoring(!settings.passiveLocationMonitoring) }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Timeline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                strings.settingsPassiveLocationTitle,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                strings.settingsPassiveLocationSubtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Switch(
+                        checked = settings.passiveLocationMonitoring,
+                        onCheckedChange = { viewModel.updatePassiveLocationMonitoring(it) }
+                    )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                // 2. Journal technique des logs
                 SettingsActionRow(
                     title = strings.settingsViewLogs,
                     subtitle = strings.settingsViewLogsSubtitle,

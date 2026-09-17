@@ -15,6 +15,9 @@ import com.remindly.notify.NotificationChannels
 import com.remindly.sync.SharedReminderSyncManager
 import com.remindly.sync.SharedReminderSyncWorker
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -26,6 +29,12 @@ class RemindlyApp : Application(), Configuration.Provider {
 
     @Inject
     lateinit var sharedReminderSyncManager: SharedReminderSyncManager
+
+    @Inject
+    lateinit var passiveLocationManager: com.remindly.location.PassiveLocationManager
+
+    @Inject
+    lateinit var settingsRepository: com.remindly.data.settings.VoiceAlarmSettingsRepository
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -44,6 +53,15 @@ class RemindlyApp : Application(), Configuration.Provider {
 
         // Filet de sécurité : réenregistrement périodique des géofences (toutes les 6h)
         scheduleGeofenceRefresh()
+
+        // Moniteur passif : démarrage au lancement si activé
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                if (settingsRepository.getSettings().passiveLocationMonitoring) {
+                    passiveLocationManager.start()
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     private fun scheduleGeofenceRefresh() {

@@ -83,6 +83,7 @@ fun LogsScreen(
             // Filtres rapides
             val filterOptions = listOf(
                 null to "Tous",
+                "PASSIVE_LOC" to "Timeline GPS/GMS",
                 "ROLLING_ZONE" to "Fenêtre Glissante",
                 "POI_DETAIL" to "Détails POIs",
                 "ROUTE_EVAL" to "Éval Trajet",
@@ -162,10 +163,11 @@ private fun LogCard(
     val timeStr = timeFormat.format(date)
     val dateStr = dateFormat.format(date)
 
-    val (badgeBg, badgeFg) = when (log.level) {
-        "SUCCESS" -> Color(0xFF10B981).copy(alpha = 0.15f) to Color(0xFF10B981)
-        "ERROR" -> Color(0xFFEF4444).copy(alpha = 0.15f) to Color(0xFFEF4444)
-        "WARN" -> Color(0xFFF59E0B).copy(alpha = 0.15f) to Color(0xFFF59E0B)
+    val (badgeBg, badgeFg) = when {
+        log.level == "SUCCESS" -> Color(0xFF10B981).copy(alpha = 0.15f) to Color(0xFF10B981)
+        log.level == "ERROR" -> Color(0xFFEF4444).copy(alpha = 0.15f) to Color(0xFFEF4444)
+        log.level == "WARN" -> Color(0xFFF59E0B).copy(alpha = 0.15f) to Color(0xFFF59E0B)
+        log.tag == "PASSIVE_LOC" -> Color(0xFF6366F1).copy(alpha = 0.15f) to Color(0xFF6366F1)
         else -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
     }
 
