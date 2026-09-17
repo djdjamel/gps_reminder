@@ -2,7 +2,10 @@ package com.remindly.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings as AndroidSettings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.clickable
@@ -51,6 +54,12 @@ fun SettingsScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val isTestingVolume by viewModel.isTestingVolume.collectAsStateWithLifecycle()
+
+    val activityRecognitionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        viewModel.updateAutoVehicleDetection(isGranted)
+    }
 
     var showLogoutDialog by remember { mutableStateOf(false) }
 
@@ -1063,8 +1072,18 @@ fun SettingsScreen(
                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
                 // 2. Mode Conduite Intelligent (Activity Recognition)
+                val hasActivityPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    viewModel.hasActivityRecognitionPermission()
+                } else true
+
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !hasActivityPermission && settings.autoVehicleDetection) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                activityRecognitionLauncher.launch(android.Manifest.permission.ACTIVITY_RECOGNITION)
+                            }
+                        },
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1075,7 +1094,7 @@ fun SettingsScreen(
                         Icon(
                             Icons.Filled.DirectionsCar,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = if (!hasActivityPermission && settings.autoVehicleDetection) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(22.dp)
                         )
                         Spacer(Modifier.width(8.dp))
@@ -1086,16 +1105,29 @@ fun SettingsScreen(
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                strings.settingsAutoVehicleSubtitle,
+                                if (!hasActivityPermission && settings.autoVehicleDetection)
+                                    "⚠️ Permission 'Activité physique' requise (appuyez pour accorder)"
+                                else
+                                    strings.settingsAutoVehicleSubtitle,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (!hasActivityPermission && settings.autoVehicleDetection) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
 
                     Switch(
-                        checked = settings.autoVehicleDetection,
-                        onCheckedChange = { viewModel.updateAutoVehicleDetection(it) }
+                        checked = settings.autoVehicleDetection && hasActivityPermission,
+                        onCheckedChange = { isChecked ->
+                            if (isChecked) {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !hasActivityPermission) {
+                                    activityRecognitionLauncher.launch(android.Manifest.permission.ACTIVITY_RECOGNITION)
+                                } else {
+                                    viewModel.updateAutoVehicleDetection(true)
+                                }
+                            } else {
+                                viewModel.updateAutoVehicleDetection(false)
+                            }
+                        }
                     )
                 }
 

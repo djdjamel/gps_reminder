@@ -47,7 +47,9 @@ class VehicleModeManager @Inject constructor(
     @SuppressLint("MissingPermission")
     fun startMonitoring() {
         if (!hasActivityRecognitionPermission()) {
-            Log.w(TAG, "Permission ACTIVITY_RECOGNITION non accordée, surveillance des transitions ignorée")
+            val warnMsg = "⚠️ Permission 'Activité physique' non accordée : la détection de véhicule est en attente d'autorisation système."
+            Log.w(TAG, warnMsg)
+            appLogger.w(ActivityTransitionReceiver.TAG_LOG, warnMsg)
             return
         }
 
@@ -180,7 +182,7 @@ class VehicleModeManager @Inject constructor(
         }
     }
 
-    private fun hasActivityRecognitionPermission(): Boolean {
+    fun hasActivityRecognitionPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ContextCompat.checkSelfPermission(
                 context,

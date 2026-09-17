@@ -231,6 +231,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun hasActivityRecognitionPermission(): Boolean {
+        return vehicleModeManager.hasActivityRecognitionPermission()
+    }
+
     fun signOut() {
         authManager.signOut()
     }
