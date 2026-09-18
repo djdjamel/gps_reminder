@@ -27,6 +27,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 @Singleton
@@ -35,7 +36,8 @@ class GeofenceManager @Inject constructor(
     private val nearbyPlacesService: NearbyPlacesService,
     private val directionsService: DirectionsService,
     private val settingsRepository: VoiceAlarmSettingsRepository,
-    private val appLogger: AppLogger
+    private val appLogger: AppLogger,
+    private val reminderRepositoryProvider: Provider<com.remindly.data.repo.ReminderRepository>
 ) {
     private val tag = "GeofenceManager"
     private val geofencingClient: GeofencingClient = LocationServices.getGeofencingClient(context)
@@ -231,7 +233,11 @@ class GeofenceManager @Inject constructor(
                                 detectionRadiusM
                             )
                             .setExpirationDuration(Geofence.NEVER_EXPIRE)
-                            .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_DWELL)
+                            .setTransitionTypes(
+                                Geofence.GEOFENCE_TRANSITION_ENTER or 
+                                Geofence.GEOFENCE_TRANSITION_DWELL or 
+                                Geofence.GEOFENCE_TRANSITION_EXIT
+                            )
                             .setLoiteringDelay(8000)
                             .setNotificationResponsiveness(3000)
                             .build()
@@ -353,7 +359,11 @@ class GeofenceManager @Inject constructor(
             .setRequestId(requestId)
             .setCircularRegion(lat, lng, radius)
             .setExpirationDuration(Geofence.NEVER_EXPIRE)
-            .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_DWELL)
+            .setTransitionTypes(
+                Geofence.GEOFENCE_TRANSITION_ENTER or 
+                Geofence.GEOFENCE_TRANSITION_DWELL or 
+                Geofence.GEOFENCE_TRANSITION_EXIT
+            )
             .setLoiteringDelay(8000)
             .setNotificationResponsiveness(responsivenessMs)
             .build()
@@ -436,5 +446,41 @@ class GeofenceManager @Inject constructor(
                 editor.remove("exit_radius_$reminderId")
                 editor.remove("geofences_$reminderId").apply()
             }
+    }
+
+    fun resetCooldown(reminderId: Long) {
+        prefs.edit().remove("last_trigger_time_$reminderId").apply()
+    }
+
+    fun rearmGeofence(reminderId: Long) {
+        scope.launch {
+            try {
+                val repository = reminderRepositoryProvider.get()
+                val reminder = repository.getById(reminderId)
+                if (reminder != null && reminder.status == com.remindly.domain.model.ReminderStatus.ACTIVE) {
+                    appLogger.i("GEOFENCE_REARM", "Réarmement automatique du géofence pour '${reminder.placeLabel ?: reminder.text}' (Rappel #$reminderId)", reminderId)
+                    removeGeofence(reminderId)
+                    kotlinx.coroutines.delay(300)
+                    addGeofence(reminder)
+                }
+            } catch (e: Exception) {
+                Log.e(tag, "Erreur rearmGeofence pour #$reminderId: ${e.message}", e)
+            }
+        }
+    }
+
+    fun rearmGeofence(reminder: Reminder) {
+        scope.launch {
+            try {
+                if (reminder.status == com.remindly.domain.model.ReminderStatus.ACTIVE) {
+                    appLogger.i("GEOFENCE_REARM", "Réarmement automatique du géofence pour '${reminder.placeLabel ?: reminder.text}' (Rappel #${reminder.id})", reminder.id)
+                    removeGeofence(reminder.id)
+                    kotlinx.coroutines.delay(300)
+                    addGeofence(reminder)
+                }
+            } catch (e: Exception) {
+                Log.e(tag, "Erreur rearmGeofence: ${e.message}", e)
+            }
+        }
     }
 }

@@ -75,10 +75,19 @@ class RemindlyApp : Application(), Configuration.Provider {
         val geofenceRefresh = PeriodicWorkRequestBuilder<ReRegisterGeofencesWorker>(
             6, TimeUnit.HOURS
         ).build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+        val workManager = WorkManager.getInstance(this)
+        workManager.enqueueUniquePeriodicWork(
             "geofence_periodic_refresh",
             ExistingPeriodicWorkPolicy.KEEP,
             geofenceRefresh
+        )
+
+        // Réenregistrement immédiat au démarrage pour rattraper toute mise à jour d'APK ou redémarrage
+        val oneShot = OneTimeWorkRequestBuilder<ReRegisterGeofencesWorker>().build()
+        workManager.enqueueUniqueWork(
+            "geofence_startup_refresh",
+            ExistingWorkPolicy.KEEP,
+            oneShot
         )
     }
 

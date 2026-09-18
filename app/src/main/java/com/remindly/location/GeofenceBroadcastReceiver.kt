@@ -152,14 +152,6 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
                         val reminder = reminderRepository.getById(reminderId) ?: continue
 
-                        // Option 1 : Garde-fou d'activation différée (ne sonne qu'à partir de l'heure choisie)
-                        if (reminder.placeActiveFromMillis != null && System.currentTimeMillis() < reminder.placeActiveFromMillis) {
-                            val suppressMsg = "🚫 Alerte de lieu ignorée : l'heure d'activation différée n'est pas encore atteinte (${reminder.placeActiveFromMillis}) pour rappel #${reminder.id}"
-                            android.util.Log.i("GeofenceReceiver", suppressMsg)
-                            appLogger.i("GEOFENCE_SUPPRESSED", suppressMsg, reminderId)
-                            continue
-                        }
-
                         val detectedPlaceName = prefs.getString("place_name_${geofence.requestId}", null) ?: if (geofence.requestId.contains("__")) {
                             try {
                                 val encoded = geofence.requestId.substringAfter("__")
@@ -169,6 +161,36 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 null
                             }
                         } else null
+
+                        // 1c. Traitement spécifique de la transition SORTIE (EXIT) sur lieu fixe ou POI
+                        if (geofenceTransition == Geofence.GEOFENCE_TRANSITION_EXIT) {
+                            val placeName = detectedPlaceName ?: reminder.placeLabel ?: "Lieu"
+                            val exitMsg = "🚗 Sortie de zone détectée pour '$placeName' (Rappel #$reminderId). Réarmement automatique pour le prochain passage."
+                            android.util.Log.i("GeofenceReceiver", exitMsg)
+                            appLogger.i("GEOFENCE_EXIT", exitMsg, reminderId)
+
+                            // Arrêter le suivi diagnostic 5s si actif pour ce rappel
+                            if (diagnosticTracker.isDiagnosticActiveFor(reminderId)) {
+                                diagnosticTracker.stopDiagnostic(context)
+                            }
+
+                            // Réinitialiser le cooldown anti-rebond pour permettre un redéclenchement immédiat au retour
+                            geofenceManager.resetCooldown(reminderId)
+
+                            // Si le rappel est toujours actif (non complété), réarmer le géofence auprès de GMS
+                            if (reminder.status == ReminderStatus.ACTIVE) {
+                                geofenceManager.rearmGeofence(reminder)
+                            }
+                            continue
+                        }
+
+                        // Option 1 : Garde-fou d'activation différée (ne sonne qu'à partir de l'heure choisie)
+                        if (reminder.placeActiveFromMillis != null && System.currentTimeMillis() < reminder.placeActiveFromMillis) {
+                            val suppressMsg = "🚫 Alerte de lieu ignorée : l'heure d'activation différée n'est pas encore atteinte (${reminder.placeActiveFromMillis}) pour rappel #${reminder.id}"
+                            android.util.Log.i("GeofenceReceiver", suppressMsg)
+                            appLogger.i("GEOFENCE_SUPPRESSED", suppressMsg, reminderId)
+                            continue
+                        }
 
                         val placeLat = prefs.getFloat("place_lat_${geofence.requestId}", Float.NaN)
                         val placeLng = prefs.getFloat("place_lng_${geofence.requestId}", Float.NaN)

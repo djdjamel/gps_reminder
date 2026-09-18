@@ -41,6 +41,9 @@ class DiagnosticLocationService : Service() {
     @Inject
     lateinit var vehicleModeManager: VehicleModeManager
 
+    @Inject
+    lateinit var geofenceManager: GeofenceManager
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
@@ -171,6 +174,12 @@ class DiagnosticLocationService : Service() {
             val exitMsg = "Sortie du rayon de détection (${distanceM.toInt()}m > ${targetRadiusM.toInt()}m) : arrêt automatique du suivi 5s pour rappel #$reminderId"
             android.util.Log.i(TAG, exitMsg)
             appLogger.i("DIAG_GPS", exitMsg, reminderId)
+
+            if (reminderId != -1L) {
+                geofenceManager.resetCooldown(reminderId)
+                geofenceManager.rearmGeofence(reminderId)
+            }
+
             stopTracking()
             stopSelf()
             return
