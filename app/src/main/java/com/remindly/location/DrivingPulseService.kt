@@ -17,7 +17,15 @@ import androidx.core.app.ServiceCompat
 import com.google.android.gms.location.*
 import com.remindly.MainActivity
 import com.remindly.data.repo.ReminderRepository
+import com.remindly.data.settings.VoiceAlarmSettings
+import com.remindly.data.settings.VoiceAlarmSettingsRepository
+import com.remindly.domain.model.AttachmentType
+import com.remindly.domain.model.Reminder
+import com.remindly.domain.model.TriggerType
+import com.remindly.media.AudioAlarmService
 import com.remindly.notify.NotificationChannels
+import com.remindly.notify.ReminderNotifier
+import com.remindly.time.AlarmScheduler
 import com.remindly.util.AppLogger
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
@@ -33,6 +41,15 @@ class DrivingPulseService : Service() {
 
     @Inject
     lateinit var reminderRepository: ReminderRepository
+
+    @Inject
+    lateinit var settingsRepository: VoiceAlarmSettingsRepository
+
+    @Inject
+    lateinit var diagnosticTracker: DiagnosticLocationTracker
+
+    @Inject
+    lateinit var alarmScheduler: AlarmScheduler
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var fusedLocationClient: FusedLocationProviderClient
@@ -187,6 +204,7 @@ class DrivingPulseService : Service() {
                 val locationReminders = activeReminders.filter {
                     (it.placeLat != null && it.placeLng != null) || it.placeCategory != null
                 }
+                val settings = settingsRepository.getSettings()
 
                 var closestInfo = ""
                 if (locationReminders.isNotEmpty()) {
@@ -198,9 +216,19 @@ class DrivingPulseService : Service() {
                         if (targetLat != null && targetLng != null && targetLat != 0.0 && targetLng != 0.0) {
                             val results = FloatArray(1)
                             Location.distanceBetween(loc.latitude, loc.longitude, targetLat, targetLng, results)
-                            if (results[0] < minDistance) {
-                                minDistance = results[0]
+                            val dist = results[0]
+                            if (dist < minDistance) {
+                                minDistance = dist
                                 closestLabel = r.placeLabel ?: r.text ?: "Rappel"
+                            }
+
+                            // Déclenchement autonome par Pulse Conduite si entrée dans le rayon
+                            val detectionRadius = r.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
+                            if (dist <= detectionRadius) {
+                                val now = System.currentTimeMillis()
+                                if (r.placeActiveFromMillis == null || now >= r.placeActiveFromMillis) {
+                                    triggerReminderFromPulse(r, dist, loc, settings)
+                                }
                             }
                         }
                     }
@@ -227,6 +255,82 @@ class DrivingPulseService : Service() {
                 Log.e(TAG, "Erreur handlePulseLocation: ${e.message}", e)
             }
         }
+    }
+
+    private fun triggerReminderFromPulse(
+        reminder: Reminder,
+        distanceMeters: Float,
+        loc: Location,
+        settings: VoiceAlarmSettings
+    ) {
+        val reminderId = reminder.id
+        val prefs = getSharedPreferences("geofence_tracking", Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val lastTrigger = prefs.getLong("last_trigger_time_${reminderId}", 0L)
+        val cooldownMs = settings.geofenceCooldownSeconds * 1000L
+        val isCooldown = (now - lastTrigger) < cooldownMs
+
+        val placeName = reminder.placeLabel ?: reminder.text ?: "Lieu"
+        val radius = (reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()).toInt()
+        val triggerMsg = "🎯 [PULSE_TRIGGERED] Déclenchement autonome par Pulse Conduite pour '$placeName' à ${distanceMeters.toInt()}m (rayon: ${radius}m)"
+        Log.i(TAG, triggerMsg)
+
+        val notifier = ReminderNotifier(this@DrivingPulseService)
+
+        if (!isCooldown) {
+            prefs.edit().putLong("last_trigger_time_${reminderId}", now).apply()
+            appLogger.success("GEOFENCE_TRIGGERED", triggerMsg, reminderId)
+
+            notifier.showPlaceReminder(
+                reminder = reminder,
+                detectedPlaceName = reminder.placeLabel,
+                distanceMeters = distanceMeters
+            )
+
+            val audioAttachment = reminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
+            val shouldStartAudioService = (audioAttachment != null) ||
+                ((settings.readTextRemindersAloud || settings.announcePlaceByVoice) && !reminder.text.isNullOrBlank())
+
+            if (shouldStartAudioService) {
+                try {
+                    AudioAlarmService.start(
+                        context = this@DrivingPulseService,
+                        audioPath = audioAttachment?.localPath,
+                        reminderText = reminder.text ?: "Rappel",
+                        reminderId = reminderId,
+                        placeName = reminder.placeLabel,
+                        distanceMeters = distanceMeters
+                    )
+                    appLogger.success("NOTIFICATION_FIRED", "Alarme vocale/TTS lancée (Pulse Conduite)", reminderId)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Impossible de démarrer AudioAlarmService: ${e.message}")
+                    appLogger.w("NOTIFICATION_FIRED", "Repli sur notification standard : ${e.message}", reminderId)
+                }
+            } else {
+                appLogger.success("NOTIFICATION_FIRED", "Notification affichée pour '${reminder.text}' (Pulse Conduite)", reminderId)
+            }
+
+            // Option 2 (Mutual Cancellation) : Le lieu s'étant déclenché, annuler l'alarme d'échéance programmée si applicable
+            if (reminder.triggerType == TriggerType.BOTH || reminder.triggerTimeMillis != null) {
+                alarmScheduler.cancel(reminderId)
+                val cancelMsg = "Arrivée au lieu validée (Pulse Conduite) : alarme d'échéance annulée pour rappel #$reminderId"
+                Log.i(TAG, cancelMsg)
+                appLogger.i("MUTUAL_CANCELLATION", cancelMsg, reminderId)
+            }
+        } else {
+            notifier.showPlaceReminder(
+                reminder = reminder,
+                detectedPlaceName = reminder.placeLabel,
+                distanceMeters = distanceMeters
+            )
+            appLogger.i("NOTIFICATION_FIRED", "Notification rafraîchie pour '$placeName' (Pulse Conduite - Cooldown de ${settings.geofenceCooldownSeconds}s actif)", reminderId)
+        }
+
+        // Démarrage automatique du suivi live 5s dans la zone
+        diagnosticTracker.startLiveZoneTracking(this@DrivingPulseService, reminder)
+
+        // Handoff immédiat : mettre le pulse en pause pour céder la place au suivi intensif 5s
+        pausePulse()
     }
 
     private fun buildNotification(contentText: String): android.app.Notification {

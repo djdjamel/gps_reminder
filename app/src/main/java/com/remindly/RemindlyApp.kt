@@ -10,13 +10,17 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.remindly.data.repo.ReminderRepository
+import com.remindly.location.GeofenceManager
 import com.remindly.location.ReRegisterGeofencesWorker
 import com.remindly.notify.NotificationChannels
 import com.remindly.sync.SharedReminderSyncManager
 import com.remindly.sync.SharedReminderSyncWorker
+import com.remindly.util.AppLogger
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -39,6 +43,15 @@ class RemindlyApp : Application(), Configuration.Provider {
     @Inject
     lateinit var settingsRepository: com.remindly.data.settings.VoiceAlarmSettingsRepository
 
+    @Inject
+    lateinit var geofenceManager: GeofenceManager
+
+    @Inject
+    lateinit var reminderRepository: ReminderRepository
+
+    @Inject
+    lateinit var appLogger: AppLogger
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -56,6 +69,30 @@ class RemindlyApp : Application(), Configuration.Provider {
 
         // Filet de sécurité : réenregistrement périodique des géofences (toutes les 6h)
         scheduleGeofenceRefresh()
+
+        // Réarmement immédiat direct de toutes les géofences actives au lancement (sans attendre WorkManager)
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val activeReminders = reminderRepository.observePersonalActive().first()
+                val locationReminders = activeReminders.filter {
+                    (it.placeLat != null && it.placeLng != null) || it.placeCategory != null
+                }
+                val now = System.currentTimeMillis()
+                var count = 0
+                for (reminder in locationReminders) {
+                    if (reminder.placeActiveFromMillis != null && reminder.placeActiveFromMillis > now) {
+                        continue
+                    }
+                    geofenceManager.addGeofence(reminder)
+                    count++
+                }
+                val msg = "⚡ $count géofence(s) réarmée(s) directement au lancement de l'application"
+                android.util.Log.i("RemindlyApp", msg)
+                appLogger.i("GEOFENCE_STARTUP", msg)
+            } catch (e: Exception) {
+                android.util.Log.e("RemindlyApp", "Erreur réarmement direct géofences au démarrage: ${e.message}", e)
+            }
+        }
 
         // Moniteur passif & Détection d'activité : démarrage au lancement si activés
         CoroutineScope(Dispatchers.IO).launch {
@@ -86,7 +123,7 @@ class RemindlyApp : Application(), Configuration.Provider {
         val oneShot = OneTimeWorkRequestBuilder<ReRegisterGeofencesWorker>().build()
         workManager.enqueueUniqueWork(
             "geofence_startup_refresh",
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.REPLACE,
             oneShot
         )
     }
