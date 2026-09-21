@@ -50,6 +50,7 @@ interface VoiceAlarmSettingsRepository {
     suspend fun clearCommuteRoute()
     suspend fun setPassiveLocationMonitoring(enabled: Boolean)
     suspend fun setAutoVehicleDetection(enabled: Boolean)
+    suspend fun setAdaptiveActivityRadius(enabled: Boolean)
 }
 
 class VoiceAlarmSettingsRepositoryImpl(
@@ -82,6 +83,7 @@ class VoiceAlarmSettingsRepositoryImpl(
         val KEY_COMMUTE_ROUTE_POLYLINE = stringPreferencesKey("commute_route_polyline")
         val KEY_PASSIVE_LOCATION_MONITORING = booleanPreferencesKey("passive_location_monitoring")
         val KEY_AUTO_VEHICLE_DETECTION = booleanPreferencesKey("auto_vehicle_detection")
+        val KEY_ADAPTIVE_ACTIVITY_RADIUS = booleanPreferencesKey("adaptive_activity_radius")
     }
 
     override val settingsFlow: Flow<VoiceAlarmSettings> = dataStore.data
@@ -116,7 +118,8 @@ class VoiceAlarmSettingsRepositoryImpl(
                 commuteEndLabel = preferences[PreferencesKeys.KEY_COMMUTE_END_LABEL],
                 commuteRoutePolyline = preferences[PreferencesKeys.KEY_COMMUTE_ROUTE_POLYLINE],
                 passiveLocationMonitoring = preferences[PreferencesKeys.KEY_PASSIVE_LOCATION_MONITORING] ?: false,
-                autoVehicleDetection = preferences[PreferencesKeys.KEY_AUTO_VEHICLE_DETECTION] ?: true
+                autoVehicleDetection = preferences[PreferencesKeys.KEY_AUTO_VEHICLE_DETECTION] ?: true,
+                adaptiveActivityRadius = preferences[PreferencesKeys.KEY_ADAPTIVE_ACTIVITY_RADIUS] ?: true
             )
         }
 
@@ -269,6 +272,12 @@ class VoiceAlarmSettingsRepositoryImpl(
     override suspend fun setAutoVehicleDetection(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.KEY_AUTO_VEHICLE_DETECTION] = enabled
+        }
+    }
+
+    override suspend fun setAdaptiveActivityRadius(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.KEY_ADAPTIVE_ACTIVITY_RADIUS] = enabled
         }
     }
 }

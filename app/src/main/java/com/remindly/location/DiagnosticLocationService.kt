@@ -44,10 +44,17 @@ class DiagnosticLocationService : Service() {
     @Inject
     lateinit var geofenceManager: GeofenceManager
 
+    @Inject
+    lateinit var contextEngine: ContextRelevanceEngine
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var notificationManager: NotificationManager
+
+    private val recentDistances = ArrayDeque<DistanceSample>()
+    private val recentSpeeds = ArrayDeque<SpeedSample>()
+    private val maxSamples = 5
 
     private var reminderId: Long = -1L
     private var reminderText: String = "Rappel"
@@ -145,6 +152,8 @@ class DiagnosticLocationService : Service() {
             val stopMsg = "Arrêt de la surveillance intensive pour rappel #$reminderId"
             android.util.Log.i(TAG, stopMsg)
             appLogger.i("DIAG_GPS", stopMsg, reminderId)
+            recentDistances.clear()
+            recentSpeeds.clear()
             tracker.stopDiagnostic(this)
             stopForeground(STOP_FOREGROUND_REMOVE)
 
@@ -161,6 +170,22 @@ class DiagnosticLocationService : Service() {
         val distanceM = results[0]
         val accuracyM = if (loc.hasAccuracy()) loc.accuracy else 0f
         val speedKmh = if (loc.hasSpeed()) loc.speed * 3.6f else 0f
+
+        val now = System.currentTimeMillis()
+        recentDistances.addLast(DistanceSample(distanceM, now))
+        if (recentDistances.size > maxSamples) recentDistances.removeFirst()
+
+        recentSpeeds.addLast(SpeedSample(speedKmh, now))
+        if (recentSpeeds.size > maxSamples) recentSpeeds.removeFirst()
+
+        val trendSymbol = if (recentDistances.size >= 2) {
+            val delta = recentDistances.last().distanceM - recentDistances.first().distanceM
+            when {
+                delta < -8f -> " ↘ Approche (-${(-delta).toInt()}m)"
+                delta > 10f -> " ↗ Éloignement (+${delta.toInt()}m)"
+                else -> " ➡️ Stable"
+            }
+        } else ""
 
         tracker.updateMeasurement(distanceM, accuracyM, speedKmh)
 
@@ -208,7 +233,7 @@ class DiagnosticLocationService : Service() {
         }
 
         val statusNote = if (inRadius) " 🎯 [DANS LE RAYON ${targetRadiusM.toInt()}m]" else ""
-        val logMsg = "Dist: ${distanceM.toInt()}m (±${accuracyM.toInt()}m)$statusNote | GPS: (${String.format(Locale.ROOT, "%.5f", loc.latitude)}, ${String.format(Locale.ROOT, "%.5f", loc.longitude)}) | Vit: ${speedKmh.toInt()} km/h"
+        val logMsg = "Dist: ${distanceM.toInt()}m$trendSymbol (±${accuracyM.toInt()}m)$statusNote | GPS: (${String.format(Locale.ROOT, "%.5f", loc.latitude)}, ${String.format(Locale.ROOT, "%.5f", loc.longitude)}) | Vit: ${speedKmh.toInt()} km/h"
         
         android.util.Log.d(TAG, logMsg)
         appLogger.i("DIAG_GPS", logMsg, reminderId)

@@ -47,7 +47,7 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlacePickerScreen(
-    onPlaceSelected: (LatLng, String?, String?, String?, String?, Float, Long?) -> Unit,
+    onPlaceSelected: (LatLng, String?, String?, String?, String?, Float?, Long?) -> Unit,
     onNavigateBack: () -> Unit,
     initialRadiusM: Float? = null,
     initialActiveFromMillis: Long? = null,
@@ -125,6 +125,7 @@ fun PlacePickerScreen(
     }
 
     val strings = LocalAppStrings.current
+    var isAutoRadius by remember { mutableStateOf(initialRadiusM == null) }
     var selectedRadiusM by remember { mutableFloatStateOf(initialRadiusM ?: userSettings.poiDetectionRadiusM.toFloat()) }
     var selectedActiveFromMillis by remember { mutableStateOf(initialActiveFromMillis) }
 
@@ -280,8 +281,9 @@ fun PlacePickerScreen(
                                         modifier = Modifier.size(20.dp)
                                     )
                                     Spacer(Modifier.width(8.dp))
+                                    val radiusText = if (isAutoRadius) strings.presetAuto else if (selectedRadiusM < 1000f) strings.radiusFormatMeters(selectedRadiusM.roundToInt()) else strings.radiusFormatKm(selectedRadiusM / 1000f)
                                     Text(
-                                        text = "Rayon : ${if (selectedRadiusM < 1000f) strings.radiusFormatMeters(selectedRadiusM.roundToInt()) else strings.radiusFormatKm(selectedRadiusM / 1000f)}" +
+                                        text = "Rayon : $radiusText" +
                                                 if (selectedActiveFromMillis != null) " • Différé" else "",
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.SemiBold,
@@ -292,7 +294,8 @@ fun PlacePickerScreen(
                                 FilledIconButton(
                                     onClick = {
                                         val label = selectedLocationName ?: "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
-                                        onPlaceSelected(selectedLocation, label, null, null, null, selectedRadiusM, selectedActiveFromMillis)
+                                        val finalRadius = if (isAutoRadius) null else selectedRadiusM
+                                        onPlaceSelected(selectedLocation, label, null, null, null, finalRadius, selectedActiveFromMillis)
                                     },
                                     modifier = Modifier.size(44.dp),
                                     shape = RoundedCornerShape(12.dp),
@@ -353,11 +356,12 @@ fun PlacePickerScreen(
                                         shape = RoundedCornerShape(8.dp),
                                         color = MaterialTheme.colorScheme.primaryContainer
                                     ) {
+                                        val radiusBadge = if (isAutoRadius) strings.presetAuto else if (selectedRadiusM < 1000f)
+                                            strings.radiusFormatMeters(selectedRadiusM.roundToInt())
+                                        else
+                                            strings.radiusFormatKm(selectedRadiusM / 1000f)
                                         Text(
-                                            text = if (selectedRadiusM < 1000f)
-                                                strings.radiusFormatMeters(selectedRadiusM.roundToInt())
-                                            else
-                                                strings.radiusFormatKm(selectedRadiusM / 1000f),
+                                            text = radiusBadge,
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -384,7 +388,8 @@ fun PlacePickerScreen(
                                     FilledIconButton(
                                         onClick = {
                                             val label = selectedLocationName ?: "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
-                                            onPlaceSelected(selectedLocation, label, null, null, null, selectedRadiusM, selectedActiveFromMillis)
+                                            val finalRadius = if (isAutoRadius) null else selectedRadiusM
+                                            onPlaceSelected(selectedLocation, label, null, null, null, finalRadius, selectedActiveFromMillis)
                                         },
                                         modifier = Modifier.size(44.dp),
                                         shape = RoundedCornerShape(12.dp),
@@ -405,6 +410,7 @@ fun PlacePickerScreen(
                             // Puces de raccourcis rapides (Presets)
                             val presets = remember(strings) {
                                 listOf(
+                                    0f to strings.presetAuto,
                                     150f to strings.presetPedestrian,
                                     450f to strings.presetStandard,
                                     1000f to strings.presetBroad,
@@ -419,10 +425,17 @@ fun PlacePickerScreen(
                                 items(presets) { preset ->
                                     val presetRadius = preset.first
                                     val label = preset.second
-                                    val isSelected = (selectedRadiusM.roundToInt() == presetRadius.roundToInt())
+                                    val isSelected = if (presetRadius == 0f) isAutoRadius else (!isAutoRadius && selectedRadiusM.roundToInt() == presetRadius.roundToInt())
                                     FilterChip(
                                         selected = isSelected,
-                                        onClick = { selectedRadiusM = presetRadius },
+                                        onClick = {
+                                            if (presetRadius == 0f) {
+                                                isAutoRadius = true
+                                            } else {
+                                                isAutoRadius = false
+                                                selectedRadiusM = presetRadius
+                                            }
+                                        },
                                         label = { Text(label, style = MaterialTheme.typography.labelSmall) }
                                     )
                                 }
@@ -432,6 +445,7 @@ fun PlacePickerScreen(
                             Slider(
                                 value = selectedRadiusM,
                                 onValueChange = {
+                                    isAutoRadius = false
                                     selectedRadiusM = ((it / 25f).roundToInt() * 25).toFloat().coerceIn(100f, 3000f)
                                 },
                                 valueRange = 100f..3000f,
@@ -439,6 +453,15 @@ fun PlacePickerScreen(
                                     .fillMaxWidth()
                                     .height(32.dp)
                             )
+
+                            if (isAutoRadius) {
+                                Text(
+                                    text = strings.radiusAutoDescription,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+                                )
+                            }
 
                             // Option 1 : Heure d'activation différée
                             PlaceActivationTimePicker(

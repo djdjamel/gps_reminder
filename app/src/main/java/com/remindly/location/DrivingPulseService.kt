@@ -51,6 +51,11 @@ class DrivingPulseService : Service() {
     @Inject
     lateinit var alarmScheduler: AlarmScheduler
 
+    @Inject
+    lateinit var contextEngine: ContextRelevanceEngine
+
+    private val lastDistanceByReminder = mutableMapOf<Long, DistanceSample>()
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var notificationManager: NotificationManager
@@ -222,12 +227,29 @@ class DrivingPulseService : Service() {
                                 closestLabel = r.placeLabel ?: r.text ?: "Rappel"
                             }
 
-                            // Déclenchement autonome par Pulse Conduite si entrée dans le rayon
                             val detectionRadius = r.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
+                            val now = System.currentTimeMillis()
+                            val prevSample = lastDistanceByReminder[r.id]
+                            val currentSample = DistanceSample(dist, now)
+                            lastDistanceByReminder[r.id] = currentSample
+                            val sampleList = if (prevSample != null) listOf(prevSample, currentSample) else listOf(currentSample)
+
                             if (dist <= detectionRadius) {
-                                val now = System.currentTimeMillis()
                                 if (r.placeActiveFromMillis == null || now >= r.placeActiveFromMillis) {
-                                    triggerReminderFromPulse(r, dist, loc, settings)
+                                    val evaluation = contextEngine.evaluate(
+                                        reminder = r,
+                                        currentLocation = loc,
+                                        targetLat = targetLat,
+                                        targetLng = targetLng,
+                                        currentDistanceM = dist,
+                                        recentDistances = sampleList,
+                                        overrideActivity = com.google.android.gms.location.DetectedActivity.IN_VEHICLE
+                                    )
+                                    if (evaluation.decision != ContextDecision.SUPPRESS) {
+                                        triggerReminderFromPulse(r, dist, loc, settings, evaluation)
+                                    } else {
+                                        Log.d(TAG, "Déclenchement supprimé par ContextEngine: ${evaluation.reason} pour ${r.text}")
+                                    }
                                 }
                             }
                         }
@@ -261,7 +283,8 @@ class DrivingPulseService : Service() {
         reminder: Reminder,
         distanceMeters: Float,
         loc: Location,
-        settings: VoiceAlarmSettings
+        settings: VoiceAlarmSettings,
+        evaluation: ContextEvaluation
     ) {
         val reminderId = reminder.id
         val prefs = getSharedPreferences("geofence_tracking", Context.MODE_PRIVATE)
@@ -272,8 +295,9 @@ class DrivingPulseService : Service() {
 
         val placeName = reminder.placeLabel ?: reminder.text ?: "Lieu"
         val radius = (reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()).toInt()
-        val triggerMsg = "🎯 [PULSE_TRIGGERED] Déclenchement autonome par Pulse Conduite pour '$placeName' à ${distanceMeters.toInt()}m (rayon: ${radius}m)"
+        val triggerMsg = "🎯 [PULSE_TRIGGERED] Déclenchement autonome par Pulse Conduite pour '$placeName' à ${distanceMeters.toInt()}m (Score: ${evaluation.score}pts - ${evaluation.decision})"
         Log.i(TAG, triggerMsg)
+        appLogger.i("CONTEXT_SCORE", "Score: ${evaluation.score}pts [${evaluation.decision}] | ${evaluation.factors.joinToString { "${it.description} (${it.points}p)" }}", reminderId)
 
         val notifier = ReminderNotifier(this@DrivingPulseService)
 
@@ -288,8 +312,8 @@ class DrivingPulseService : Service() {
             )
 
             val audioAttachment = reminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
-            val shouldStartAudioService = (audioAttachment != null) ||
-                ((settings.readTextRemindersAloud || settings.announcePlaceByVoice) && !reminder.text.isNullOrBlank())
+            val shouldStartAudioService = (evaluation.decision == ContextDecision.FULL_ALARM) &&
+                ((audioAttachment != null) || ((settings.readTextRemindersAloud || settings.announcePlaceByVoice) && !reminder.text.isNullOrBlank()))
 
             if (shouldStartAudioService) {
                 try {

@@ -42,6 +42,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     @Inject
     lateinit var diagnosticTracker: DiagnosticLocationTracker
 
+    @Inject
+    lateinit var contextEngine: ContextRelevanceEngine
+
     override fun onReceive(context: Context, intent: Intent) {
         val geofencingEvent = GeofencingEvent.fromIntent(intent)
         if (geofencingEvent == null) {
@@ -205,30 +208,10 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             appLogger.i("GEOFENCE_FILTER_BYPASS", "Filtre intelligent contourné pour lieu fixe '${reminder.placeLabel}'", reminderId)
                         }
 
-                        // Validation de Pertinence et d'Accessibilité (Anti-autoroute, Cap de déplacement, Précision GPS proportionnelle à 30% du rayon)
-                        val triggerLoc = geofencingEvent.triggeringLocation
-                        val relevance = GeofenceFilterUtils.evaluateRelevance(
-                            location = triggerLoc,
-                            poiLat = targetLat,
-                            poiLng = targetLng,
-                            radiusM = targetRadiusM,
-                            enabled = settings.smartGeofenceFiltering && reminder.placeCategory != null,
-                            maxSpeedKmh = settings.maxFilterSpeedKmh.toFloat(),
-                            maxHeadingAngle = 75f
-                        )
-
-                        if (!relevance.isRelevant) {
-                            val filterMsg = "🚫 Alerte filtrée (${relevance.reason}) pour '${detectedPlaceName ?: reminder.placeLabel ?: "Commerce"}'"
-                            android.util.Log.w("GeofenceReceiver", filterMsg)
-                            appLogger.i("GEOFENCE_FILTERED", filterMsg, reminderId)
-                            // On ignore ce déclenchement sans désarmer la géofence (si l'utilisateur ralentit ou prend la bretelle plus tard)
-                            continue
-                        }
-
                         var distInfo = ""
                         var distanceMeters: Float? = null
 
-                        val locForDistance = triggerLoc ?: try {
+                        val locForDistance = geofencingEvent.triggeringLocation ?: try {
                             val fusedClient = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
                             com.google.android.gms.tasks.Tasks.await(
                                 fusedClient.lastLocation,
@@ -250,7 +233,25 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             distInfo = " | Dist: ${results[0].toInt()}m (±${locForDistance.accuracy.toInt()}m)"
                         }
 
-                        val triggerMsg = "Transition $transitionName sur '${detectedPlaceName ?: reminder.placeLabel ?: "Lieu inconnu"}'$distInfo"
+                        // Évaluation par le Moteur de Pertinence Contextuelle (Score de 0 à 100)
+                        val evaluation = contextEngine.evaluate(
+                            reminder = reminder,
+                            currentLocation = locForDistance,
+                            targetLat = targetLat,
+                            targetLng = targetLng,
+                            currentDistanceM = distanceMeters
+                        )
+
+                        if (evaluation.decision == ContextDecision.SUPPRESS) {
+                            val filterMsg = "🚫 Alerte filtrée (${evaluation.reason}) pour '${detectedPlaceName ?: reminder.placeLabel ?: "Commerce"}'"
+                            android.util.Log.w("GeofenceReceiver", filterMsg)
+                            appLogger.i("GEOFENCE_FILTERED", filterMsg, reminderId)
+                            continue
+                        }
+
+                        appLogger.i("CONTEXT_SCORE", "Score: ${evaluation.score}pts [${evaluation.decision}] | ${evaluation.factors.joinToString { "${it.description} (${it.points}p)" }}", reminderId)
+
+                        val triggerMsg = "Transition $transitionName sur '${detectedPlaceName ?: reminder.placeLabel ?: "Lieu inconnu"}'$distInfo (Score: ${evaluation.score}pts)"
                         android.util.Log.i("GeofenceReceiver", "DÉCLENCHEMENT DU RAPPEL $reminderId: '${reminder.text}' - $triggerMsg")
                         appLogger.success("GEOFENCE_TRIGGERED", triggerMsg, reminderId)
                         
@@ -259,7 +260,6 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 .firstOrNull { it.type == AttachmentType.AUDIO }
                             val now = System.currentTimeMillis()
                             val lastTrigger = prefs.getLong("last_trigger_time_${reminderId}", 0L)
-                            val settings = settingsRepository.getSettings()
                             val cooldownMs = settings.geofenceCooldownSeconds * 1000L
                             val isCooldown = (now - lastTrigger) < cooldownMs
 
@@ -269,8 +269,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 val notifier = ReminderNotifier(context)
                                 notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName, distanceMeters = distanceMeters)
 
-                                val shouldStartAudioService = (audioAttachment != null) ||
-                                    ((settings.readTextRemindersAloud || settings.announcePlaceByVoice) && !reminder.text.isNullOrBlank())
+                                val shouldStartAudioService = (evaluation.decision == ContextDecision.FULL_ALARM) &&
+                                    ((audioAttachment != null) || ((settings.readTextRemindersAloud || settings.announcePlaceByVoice) && !reminder.text.isNullOrBlank()))
 
                                 if (shouldStartAudioService) {
                                     try {
@@ -288,7 +288,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                         appLogger.w("NOTIFICATION_FIRED", "Repli sur notification standard : ${e.message}", reminderId)
                                     }
                                 } else {
-                                    appLogger.success("NOTIFICATION_FIRED", "Notification affichée pour '${reminder.text}'", reminderId)
+                                    appLogger.success("NOTIFICATION_FIRED", "Notification affichée pour '${reminder.text}' (Mode discret/évaluation)", reminderId)
                                 }
                             } else {
                                 val notifier = ReminderNotifier(context)

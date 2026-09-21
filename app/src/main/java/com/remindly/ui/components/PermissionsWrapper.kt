@@ -74,18 +74,34 @@ fun PermissionsWrapper(content: @Composable () -> Unit) {
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Pour déclencher vos rappels par position GPS, enregistrer vos mémos vocaux et joindre des photos, Remindly a besoin de ces autorisations.",
+                text = "Pour déclencher vos rappels par position GPS, détecter vos déplacements (voiture/marche), enregistrer vos mémos vocaux et joindre des photos, Remindly a besoin de ces autorisations.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 24.dp),
                 textAlign = TextAlign.Center
             )
-            Button(
-                onClick = { permissionState.launchMultiplePermissionRequest() },
+            Row(
                 modifier = Modifier.fillMaxWidth(0.85f),
-                shape = RoundedCornerShape(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Autoriser les accès")
+                Button(
+                    onClick = { permissionState.launchMultiplePermissionRequest() },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Autoriser")
+                }
+                OutlinedButton(
+                    onClick = {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", context.packageName, null)
+                        }
+                        context.startActivity(intent)
+                    },
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Paramètres")
+                }
             }
             Spacer(modifier = Modifier.height(8.dp))
             TextButton(onClick = { skipped = true }) {

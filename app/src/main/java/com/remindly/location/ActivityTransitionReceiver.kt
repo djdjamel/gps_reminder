@@ -20,11 +20,15 @@ class ActivityTransitionReceiver : BroadcastReceiver() {
     @Inject
     lateinit var vehicleModeManager: VehicleModeManager
 
+    @Inject
+    lateinit var userActivityTracker: UserActivityTracker
+
     override fun onReceive(context: Context, intent: Intent) {
         if (!ActivityTransitionResult.hasResult(intent)) return
         val result = ActivityTransitionResult.extractResult(intent) ?: return
 
         for (event in result.transitionEvents) {
+            userActivityTracker.recordTransition(event.activityType, event.transitionType)
             val logMessage = formatTransitionLog(event.activityType, event.transitionType)
             Log.i(TAG, logMessage)
             appLogger.i(TAG_LOG, logMessage)
