@@ -125,7 +125,7 @@ class HomeViewModel @Inject constructor(
     }
 
     val uiState: StateFlow<HomeUiState> = combine(
-        reminderRepository.observePersonalActive(),
+        reminderRepository.observePersonalNonArchived(),
         _currentLocation,
         _playingReminderId
     ) { reminders, loc, playingId ->

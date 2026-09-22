@@ -13,8 +13,12 @@ import kotlinx.coroutines.flow.Flow
 interface ReminderDao {
 
     @androidx.room.Transaction
-    @Query("SELECT * FROM reminders WHERE listId IS NULL AND status != 'ARCHIVED' ORDER BY sortOrder ASC, createdAt DESC")
+    @Query("SELECT * FROM reminders WHERE listId IS NULL AND status = 'ACTIVE' ORDER BY sortOrder ASC, createdAt DESC")
     fun observePersonalActiveWithAttachments(): Flow<List<com.remindly.data.db.entity.ReminderWithAttachments>>
+
+    @androidx.room.Transaction
+    @Query("SELECT * FROM reminders WHERE listId IS NULL AND status != 'ARCHIVED' ORDER BY sortOrder ASC, createdAt DESC")
+    fun observePersonalNonArchivedWithAttachments(): Flow<List<com.remindly.data.db.entity.ReminderWithAttachments>>
 
     @androidx.room.Transaction
     @Query("SELECT * FROM reminders WHERE id = :id")

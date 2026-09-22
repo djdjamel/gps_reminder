@@ -210,7 +210,8 @@ class DrivingPulseService : Service() {
             try {
                 val activeReminders = reminderRepository.observePersonalActive().first()
                 val locationReminders = activeReminders.filter {
-                    (it.placeLat != null && it.placeLng != null) || it.placeCategory != null
+                    it.status == com.remindly.domain.model.ReminderStatus.ACTIVE &&
+                    ((it.placeLat != null && it.placeLng != null) || it.placeCategory != null)
                 }
                 val settings = settingsRepository.getSettings()
                 val prefs = getSharedPreferences("geofence_tracking", Context.MODE_PRIVATE)
@@ -358,6 +359,11 @@ class DrivingPulseService : Service() {
         poiReqId: String? = null
     ) {
         val reminderId = reminder.id
+        if (reminder.status != com.remindly.domain.model.ReminderStatus.ACTIVE) {
+            Log.d(TAG, "triggerReminderFromPulse ignoré: rappel #${reminder.id} n'est pas actif (status=${reminder.status})")
+            geofenceManager.removeGeofence(reminderId)
+            return
+        }
         val prefs = getSharedPreferences("geofence_tracking", Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         val lastTrigger = prefs.getLong("last_trigger_time_${reminderId}", 0L)
@@ -413,14 +419,18 @@ class DrivingPulseService : Service() {
                 appLogger.i("MUTUAL_CANCELLATION", cancelMsg, reminderId)
             }
 
-            // Mode standard pour POI de catégorie : désarmer le POI spécifique déclenché pour éviter de sonner en boucle
-            if (!reminder.isRepeating && reminder.placeCategory != null && poiReqId != null) {
-                geofenceManager.removeSingleGeofence(poiReqId)
-                prefs.edit()
-                    .remove("place_name_$poiReqId")
-                    .remove("place_lat_$poiReqId")
-                    .remove("place_lng_$poiReqId")
-                    .apply()
+            // Mode standard (non répétitif) : désarmer le géofence pour ne pas ré-alerter en boucle
+            if (!reminder.isRepeating) {
+                if (reminder.placeCategory != null && poiReqId != null) {
+                    geofenceManager.removeSingleGeofence(poiReqId)
+                    prefs.edit()
+                        .remove("place_name_$poiReqId")
+                        .remove("place_lat_$poiReqId")
+                        .remove("place_lng_$poiReqId")
+                        .apply()
+                } else if (reminder.placeCategory == null) {
+                    geofenceManager.removeGeofence(reminderId)
+                }
             }
         } else {
             notifier.showPlaceReminder(

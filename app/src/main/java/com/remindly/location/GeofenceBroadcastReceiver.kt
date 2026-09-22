@@ -87,6 +87,10 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             if (!handledReminderIds.add(reminderId)) continue
 
                             val reminder = reminderRepository.getById(reminderId) ?: continue
+                            if (reminder.status != ReminderStatus.ACTIVE) {
+                                geofenceManager.removeGeofence(reminderId)
+                                continue
+                            }
                             val stepMsg = "🎯 ÉTAPE ATTEINTE (Arrivée à destination pour rappel '${reminder.text}'). Armement des POIs de retour !"
                             android.util.Log.i("GeofenceReceiver", stepMsg)
                             appLogger.success("STAGE_DEST_REACHED", stepMsg, reminderId)
@@ -137,15 +141,17 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             }
 
                             val reminder = reminderRepository.getById(reminderId) ?: continue
-                            if (reminder.status == ReminderStatus.ACTIVE) {
-                                val exitMsg = "🚗 Sortie de la zone tampon validée (${exitRadiusM.toInt()}m) pour rappel #${reminder.id} ('${reminder.text ?: "Catégorie"}'). Actualisation dynamique des POIs !"
-                                android.util.Log.i("GeofenceReceiver", exitMsg)
-                                appLogger.i("ROLLING_ZONE_EXIT", exitMsg, reminderId)
-
-                                // Désarmement de l'ancienne grappe et armement de la nouvelle grappe avec la position actuelle
+                            if (reminder.status != ReminderStatus.ACTIVE) {
                                 geofenceManager.removeGeofence(reminderId)
-                                geofenceManager.armCategoryPoIs(reminder)
+                                continue
                             }
+                            val exitMsg = "🚗 Sortie de la zone tampon validée (${exitRadiusM.toInt()}m) pour rappel #${reminder.id} ('${reminder.text ?: "Catégorie"}'). Actualisation dynamique des POIs !"
+                            android.util.Log.i("GeofenceReceiver", exitMsg)
+                            appLogger.i("ROLLING_ZONE_EXIT", exitMsg, reminderId)
+
+                            // Désarmement de l'ancienne grappe et armement de la nouvelle grappe avec la position actuelle
+                            geofenceManager.removeGeofence(reminderId)
+                            geofenceManager.armCategoryPoIs(reminder)
                             continue
                         }
 
@@ -154,6 +160,13 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                         if (!handledReminderIds.add(reminderId)) continue
 
                         val reminder = reminderRepository.getById(reminderId) ?: continue
+                        if (reminder.status != ReminderStatus.ACTIVE) {
+                            val suppressedMsg = "🚫 Alerte de lieu ignorée : le rappel #$reminderId n'est plus actif (status=${reminder.status}). Désarmement des géofences."
+                            android.util.Log.i("GeofenceReceiver", suppressedMsg)
+                            appLogger.i("GEOFENCE_SUPPRESSED", suppressedMsg, reminderId)
+                            geofenceManager.removeGeofence(reminderId)
+                            continue
+                        }
 
                         val detectedPlaceName = prefs.getString("place_name_${geofence.requestId}", null) ?: if (geofence.requestId.contains("__")) {
                             try {
@@ -327,15 +340,18 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                     reminderId
                                 )
                             } else {
-                                // Mode STANDARD : le rappel reste ACTIF dans la liste (l'utilisateur cochera manuellement).
-                                // Pour les catégories POI, on désarme le POI spécifique déclenché pour éviter de sonner en boucle.
+                                // Mode STANDARD (non répétitif) :
                                 if (reminder.placeCategory != null) {
+                                    // Pour les catégories POI, on désarme le POI spécifique déclenché pour éviter de sonner en boucle
                                     geofenceManager.removeSingleGeofence(geofence.requestId)
                                     prefs.edit()
                                         .remove("place_name_${geofence.requestId}")
                                         .remove("place_lat_${geofence.requestId}")
                                         .remove("place_lng_${geofence.requestId}")
                                         .apply()
+                                } else {
+                                    // Pour lieu fixe non répétitif : désarmer le géofence pour ne pas ré-alerter à chaque passage !
+                                    geofenceManager.removeGeofence(reminderId)
                                 }
                             }
                         }

@@ -109,8 +109,9 @@ class VehicleModeManager @Inject constructor(
 
                 val activeReminders = reminderRepository.observePersonalActive().first()
                 val hasLocationReminders = activeReminders.any {
-                    (it.placeLat != null && it.placeLng != null && it.placeLat != 0.0 && it.placeLng != 0.0) ||
-                            it.placeCategory != null
+                    it.status == com.remindly.domain.model.ReminderStatus.ACTIVE &&
+                    (((it.placeLat != null && it.placeLng != null && it.placeLat != 0.0 && it.placeLng != 0.0) ||
+                            it.placeCategory != null))
                 }
 
                 if (!hasLocationReminders) {

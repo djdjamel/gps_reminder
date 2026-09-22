@@ -50,7 +50,8 @@ class PassiveLocationReceiver : BroadcastReceiver() {
                 // Recherche des rappels de lieu actifs pour évaluer la distance à la cible la plus proche
                 val activeReminders = reminderRepository.observePersonalActive().first()
                 val locationReminders = activeReminders.filter {
-                    (it.placeLat != null && it.placeLng != null) || it.placeCategory != null
+                    it.status == com.remindly.domain.model.ReminderStatus.ACTIVE &&
+                    ((it.placeLat != null && it.placeLng != null && it.placeLat != 0.0 && it.placeLng != 0.0) || it.placeCategory != null)
                 }
 
                 for (loc in locations) {

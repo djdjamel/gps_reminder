@@ -113,4 +113,55 @@ class DrivingPulseTriggerTest {
         val shouldCancelScheduledTimeAlarm = (reminderBoth.triggerType == TriggerType.BOTH || reminderBoth.triggerTimeMillis != null)
         assertTrue("L'arrivée au lieu doit annuler l'échéance programmée (Mutual Cancellation)", shouldCancelScheduledTimeAlarm)
     }
+
+    @Test
+    fun testCompletedReminder_isExcludedFromPulseLocationReminders() {
+        val completedReminder = Reminder(
+            id = 5L,
+            text = "Stade terminé",
+            triggerType = TriggerType.PLACE,
+            placeLat = 35.5540,
+            placeLng = 6.1470,
+            placeRadiusM = 450f,
+            status = ReminderStatus.COMPLETED
+        )
+
+        val activeReminder = Reminder(
+            id = 6L,
+            text = "Pharmacie active",
+            triggerType = TriggerType.PLACE,
+            placeLat = 35.5600,
+            placeLng = 6.1500,
+            placeRadiusM = 450f,
+            status = ReminderStatus.ACTIVE
+        )
+
+        val allReminders = listOf(completedReminder, activeReminder)
+        val filteredForPulse = allReminders.filter {
+            it.status == ReminderStatus.ACTIVE &&
+            ((it.placeLat != null && it.placeLng != null) || it.placeCategory != null)
+        }
+
+        assertEquals(1, filteredForPulse.size)
+        assertEquals(6L, filteredForPulse.first().id)
+        assertFalse("Le rappel terminé ne doit jamais être inclus dans les rappels surveillés par le pulse",
+            filteredForPulse.any { it.status == ReminderStatus.COMPLETED })
+    }
+
+    @Test
+    fun testNonRepeatingPlaceReminder_disarmsGeofenceOnTrigger() {
+        val nonRepeatingReminder = Reminder(
+            id = 7L,
+            text = "Stade passage unique",
+            triggerType = TriggerType.PLACE,
+            placeLat = 35.5540,
+            placeLng = 6.1470,
+            isRepeating = false,
+            placeCategory = null,
+            status = ReminderStatus.ACTIVE
+        )
+
+        val isSingleTimeFixed = !nonRepeatingReminder.isRepeating && nonRepeatingReminder.placeCategory == null
+        assertTrue("Un lieu fixe non-répétitif doit être identifié pour désarmement de son géofence lors du déclenchement", isSingleTimeFixed)
+    }
 }

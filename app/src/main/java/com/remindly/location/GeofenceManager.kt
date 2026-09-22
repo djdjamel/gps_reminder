@@ -61,6 +61,11 @@ class GeofenceManager @Inject constructor(
     fun addGeofence(reminder: Reminder) {
         scope.launch {
             try {
+                if (reminder.status != com.remindly.domain.model.ReminderStatus.ACTIVE) {
+                    val msg = "addGeofence ignoré: rappel #${reminder.id} n'est pas actif (status=${reminder.status})"
+                    Log.d(tag, msg)
+                    return@launch
+                }
                 val settings = settingsRepository.getSettings()
 
                 // 1. Rappel par Catégorie (POI)
@@ -143,6 +148,11 @@ class GeofenceManager @Inject constructor(
     fun armCategoryPoIs(reminder: Reminder) {
         scope.launch {
             try {
+                if (reminder.status != com.remindly.domain.model.ReminderStatus.ACTIVE) {
+                    val msg = "armCategoryPoIs ignoré: rappel #${reminder.id} n'est pas actif (status=${reminder.status})"
+                    Log.d(tag, msg)
+                    return@launch
+                }
                 if (reminder.placeCategory == null) return@launch
                 val category = PlaceCategory.fromId(reminder.placeCategory) ?: return@launch
                 val settings = settingsRepository.getSettings()
@@ -418,33 +428,26 @@ class GeofenceManager @Inject constructor(
         val defaultIds = listOf(reminderId.toString(), "${reminderId}_stage_dest", "${reminderId}_exit_zone") + (0..65).map { "${reminderId}_geo_$it" }
         val idsToRemove = (storedIds + defaultIds).toList()
 
+        // Nettoyer immédiatement les SharedPreferences pour que DrivingPulseService ne lise plus ces POIs
+        val editor = prefs.edit()
+        idsToRemove.forEach { id ->
+            editor.remove("place_name_$id")
+            editor.remove("place_lat_$id")
+            editor.remove("place_lng_$id")
+        }
+        editor.remove("exit_center_lat_$reminderId")
+        editor.remove("exit_center_lng_$reminderId")
+        editor.remove("exit_radius_$reminderId")
+        editor.remove("geofences_$reminderId")
+        editor.remove("last_trigger_time_$reminderId").apply()
+
         geofencingClient.removeGeofences(idsToRemove)
             .addOnSuccessListener {
                 Log.d(tag, "Géofences du rappel $reminderId supprimées (${idsToRemove.size} IDs)")
                 appLogger.i("GEOFENCE_CLEANUP", "Géofences du rappel $reminderId désarmées (${idsToRemove.size} IDs)", reminderId)
-                val editor = prefs.edit()
-                idsToRemove.forEach { id ->
-                    editor.remove("place_name_$id")
-                    editor.remove("place_lat_$id")
-                    editor.remove("place_lng_$id")
-                }
-                editor.remove("exit_center_lat_$reminderId")
-                editor.remove("exit_center_lng_$reminderId")
-                editor.remove("exit_radius_$reminderId")
-                editor.remove("geofences_$reminderId").apply()
             }
             .addOnFailureListener { e ->
                 Log.w(tag, "Erreur suppression géofences $reminderId: ${e.message}")
-                val editor = prefs.edit()
-                idsToRemove.forEach { id ->
-                    editor.remove("place_name_$id")
-                    editor.remove("place_lat_$id")
-                    editor.remove("place_lng_$id")
-                }
-                editor.remove("exit_center_lat_$reminderId")
-                editor.remove("exit_center_lng_$reminderId")
-                editor.remove("exit_radius_$reminderId")
-                editor.remove("geofences_$reminderId").apply()
             }
     }
 

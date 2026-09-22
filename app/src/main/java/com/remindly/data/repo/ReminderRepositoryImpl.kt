@@ -34,8 +34,7 @@ class ReminderRepositoryImpl @Inject constructor(
         return workspaceManager.currentWorkspaceEmail.flatMapLatest { workspaceEmail ->
             if (workspaceEmail == null) {
                 // Espace personnel : Room est la source de vérité unique.
-                // Les rappels entrants sont ingérés dans Room par SharedReminderSyncManager
-                // (puis planifiés) ; ils apparaissent donc ici sans fusion live avec Firestore.
+                // Filtre strictement sur status = 'ACTIVE'
                 reminderDao.observePersonalActiveWithAttachments().map { relations ->
                     relations.map { relation ->
                         relation.reminder.toDomain(relation.attachments.map { it.toDomain() })
@@ -47,14 +46,39 @@ class ReminderRepositoryImpl @Inject constructor(
                 if (myUid == null) {
                     flowOf(emptyList()) // Non connecté, impossible de lire les partages
                 } else {
-                    // On a besoin du targetUid à partir de l'email.
-                    // On ne peut pas le faire directement dans un flow, 
-                    // mais flatMapLatest supporte suspend.
+                    val targetUid = firestoreDataSource.getUserIdByEmail(workspaceEmail)
+                    if (targetUid != null) {
+                        firestoreDataSource.observeSharedReminders(receiverId = targetUid, senderId = myUid).map { list ->
+                            list.filter { it.status == ReminderStatus.ACTIVE }
+                        }
+                    } else {
+                        flowOf(emptyList()) // Utilisateur introuvable
+                    }
+                }
+            }
+        }
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    override fun observePersonalNonArchived(): Flow<List<Reminder>> {
+        return workspaceManager.currentWorkspaceEmail.flatMapLatest { workspaceEmail ->
+            if (workspaceEmail == null) {
+                // Espace personnel : inclut ACTIVE et COMPLETED pour l'affichage dans l'écran principal
+                reminderDao.observePersonalNonArchivedWithAttachments().map { relations ->
+                    relations.map { relation ->
+                        relation.reminder.toDomain(relation.attachments.map { it.toDomain() })
+                    }
+                }
+            } else {
+                val myUid = authManager.currentUser?.uid
+                if (myUid == null) {
+                    flowOf(emptyList())
+                } else {
                     val targetUid = firestoreDataSource.getUserIdByEmail(workspaceEmail)
                     if (targetUid != null) {
                         firestoreDataSource.observeSharedReminders(receiverId = targetUid, senderId = myUid)
                     } else {
-                        flowOf(emptyList()) // Utilisateur introuvable
+                        flowOf(emptyList())
                     }
                 }
             }

@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 interface ReminderRepository {
     fun observePersonalActive(): Flow<List<Reminder>>
+    fun observePersonalNonArchived(): Flow<List<Reminder>>
     fun observeById(id: Long): Flow<Reminder?>
     suspend fun getById(id: Long): Reminder?
     suspend fun save(reminder: Reminder): Long
