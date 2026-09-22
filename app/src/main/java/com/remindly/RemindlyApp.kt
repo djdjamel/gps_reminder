@@ -73,6 +73,10 @@ class RemindlyApp : Application(), Configuration.Provider {
         // Réarmement immédiat direct de toutes les géofences actives au lancement (sans attendre WorkManager)
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                // 1. Purge complète des géofences GMS existantes pour éliminer les zombies (anciens rappels terminés ou supprimés)
+                geofenceManager.removeAllGeofences()
+
+                // 2. Réenregistrement exclusif des rappels strictement ACTIFS
                 val activeReminders = reminderRepository.observePersonalActive().first()
                 val locationReminders = activeReminders.filter {
                     it.status == com.remindly.domain.model.ReminderStatus.ACTIVE &&
@@ -87,7 +91,7 @@ class RemindlyApp : Application(), Configuration.Provider {
                     geofenceManager.addGeofence(reminder)
                     count++
                 }
-                val msg = "⚡ $count géofence(s) réarmée(s) directement au lancement de l'application"
+                val msg = "⚡ $count géofence(s) active(s) réarmée(s) proprement au démarrage (zombies purgés)"
                 android.util.Log.i("RemindlyApp", msg)
                 appLogger.i("GEOFENCE_STARTUP", msg)
             } catch (e: Exception) {

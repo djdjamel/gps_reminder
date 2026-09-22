@@ -35,6 +35,7 @@ class DiagnosticLocationTracker @Inject constructor() {
     }
 
     fun startLiveZoneTracking(context: Context, reminder: Reminder) {
+        if (reminder.status == com.remindly.domain.model.ReminderStatus.COMPLETED) return
         val current = _state.value
         // Si le suivi est déjà actif pour ce rappel, on n'écrase pas
         if (current.isRunning && current.reminderId == reminder.id) return

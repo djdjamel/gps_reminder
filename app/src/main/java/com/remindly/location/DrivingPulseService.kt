@@ -21,6 +21,7 @@ import com.remindly.data.settings.VoiceAlarmSettings
 import com.remindly.data.settings.VoiceAlarmSettingsRepository
 import com.remindly.domain.model.AttachmentType
 import com.remindly.domain.model.Reminder
+import com.remindly.domain.model.ReminderStatus
 import com.remindly.domain.model.TriggerType
 import com.remindly.media.AudioAlarmService
 import com.remindly.notify.NotificationChannels
@@ -419,18 +420,21 @@ class DrivingPulseService : Service() {
                 appLogger.i("MUTUAL_CANCELLATION", cancelMsg, reminderId)
             }
 
-            // Mode standard (non répétitif) : désarmer le géofence pour ne pas ré-alerter en boucle
+            // Mode standard (non répétitif) : marquer COMPLETED et désarmer toutes les zones
             if (!reminder.isRepeating) {
-                if (reminder.placeCategory != null && poiReqId != null) {
-                    geofenceManager.removeSingleGeofence(poiReqId)
-                    prefs.edit()
-                        .remove("place_name_$poiReqId")
-                        .remove("place_lat_$poiReqId")
-                        .remove("place_lng_$poiReqId")
-                        .apply()
-                } else if (reminder.placeCategory == null) {
-                    geofenceManager.removeGeofence(reminderId)
+                val completeMsg = "Rappel non répétitif #${reminder.id} ('$placeName') validé par Pulse Conduite et marqué TERMINÉ. Désarmement total."
+                Log.i(TAG, completeMsg)
+                appLogger.i("REMINDER_COMPLETED", completeMsg, reminderId)
+                serviceScope.launch {
+                    val updated = reminder.copy(
+                        placeLabel = placeName,
+                        placeLat = poiLat ?: reminder.placeLat,
+                        placeLng = poiLng ?: reminder.placeLng,
+                        status = ReminderStatus.COMPLETED
+                    )
+                    reminderRepository.save(updated)
                 }
+                geofenceManager.removeGeofence(reminderId)
             }
         } else {
             notifier.showPlaceReminder(
@@ -441,15 +445,17 @@ class DrivingPulseService : Service() {
             appLogger.i("NOTIFICATION_FIRED", "Notification rafraîchie pour '$placeName' (Pulse Conduite - Cooldown de ${settings.geofenceCooldownSeconds}s actif)", reminderId)
         }
 
-        val targetReminder = if (poiLat != null && poiLng != null) {
-            reminder.copy(placeLabel = placeName, placeLat = poiLat, placeLng = poiLng)
-        } else reminder
+        if (reminder.isRepeating) {
+            val targetReminder = if (poiLat != null && poiLng != null) {
+                reminder.copy(placeLabel = placeName, placeLat = poiLat, placeLng = poiLng)
+            } else reminder
 
-        // Démarrage automatique du suivi live 5s dans la zone
-        diagnosticTracker.startLiveZoneTracking(this@DrivingPulseService, targetReminder)
+            // Démarrage automatique du suivi live 5s dans la zone
+            diagnosticTracker.startLiveZoneTracking(this@DrivingPulseService, targetReminder)
 
-        // Handoff immédiat : mettre le pulse en pause pour céder la place au suivi intensif 5s
-        pausePulse()
+            // Handoff immédiat : mettre le pulse en pause pour céder la place au suivi intensif 5s
+            pausePulse()
+        }
     }
 
     private fun buildNotification(contentText: String): android.app.Notification {

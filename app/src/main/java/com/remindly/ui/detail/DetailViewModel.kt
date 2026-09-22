@@ -231,7 +231,9 @@ class DetailViewModel @Inject constructor(
                         appLogger.i("DEFERRED_GEOFENCE_SCHEDULED", "Armement différé programmé pour ${savedReminder.placeActiveFromMillis}", savedId)
                     } else {
                         geofenceManager.removeGeofence(savedId)
-                        geofenceManager.addGeofence(savedReminder)
+                        if (savedReminder.status == ReminderStatus.ACTIVE) {
+                            geofenceManager.addGeofence(savedReminder)
+                        }
                     }
                 }
             } else {
@@ -262,6 +264,18 @@ class DetailViewModel @Inject constructor(
             if (newStatus == ReminderStatus.COMPLETED) {
                 alarmScheduler.cancel(current.id)
                 geofenceManager.removeGeofence(current.id)
+            } else {
+                val reminder = reminderRepository.getById(current.id)
+                if (reminder != null) {
+                    if (reminder.triggerType == TriggerType.TIME || reminder.triggerType == TriggerType.BOTH) {
+                        reminder.triggerTimeMillis?.let { time ->
+                            alarmScheduler.schedule(reminder, time)
+                        }
+                    }
+                    if (reminder.triggerType == TriggerType.PLACE || reminder.triggerType == TriggerType.BOTH) {
+                        geofenceManager.addGeofence(reminder)
+                    }
+                }
             }
         }
     }

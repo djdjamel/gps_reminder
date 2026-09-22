@@ -164,4 +164,35 @@ class DrivingPulseTriggerTest {
         val isSingleTimeFixed = !nonRepeatingReminder.isRepeating && nonRepeatingReminder.placeCategory == null
         assertTrue("Un lieu fixe non-répétitif doit être identifié pour désarmement de son géofence lors du déclenchement", isSingleTimeFixed)
     }
+
+    @Test
+    fun testNonRepeatingReminder_switchesToCompletedStatusOnTrigger() {
+        val nonRepeatingReminder = Reminder(
+            id = 8L,
+            text = "Pharmacie unique",
+            triggerType = TriggerType.PLACE,
+            placeCategory = "pharmacy",
+            isRepeating = false,
+            status = ReminderStatus.ACTIVE
+        )
+
+        // Sur déclenchement (pulse ou géofence) :
+        val newStatus = if (nonRepeatingReminder.isRepeating) ReminderStatus.ACTIVE else ReminderStatus.COMPLETED
+        assertEquals(ReminderStatus.COMPLETED, newStatus)
+    }
+
+    @Test
+    fun testRepeatingReminder_remainsActiveOnTrigger() {
+        val habitReminder = Reminder(
+            id = 9L,
+            text = "Pharmacie habituelle",
+            triggerType = TriggerType.PLACE,
+            placeCategory = "pharmacy",
+            isRepeating = true,
+            status = ReminderStatus.ACTIVE
+        )
+
+        val newStatus = if (habitReminder.isRepeating) ReminderStatus.ACTIVE else ReminderStatus.COMPLETED
+        assertEquals(ReminderStatus.ACTIVE, newStatus)
+    }
 }

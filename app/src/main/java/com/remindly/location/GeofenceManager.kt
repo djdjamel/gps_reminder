@@ -413,6 +413,17 @@ class GeofenceManager @Inject constructor(
         }
     }
 
+    suspend fun removeAllGeofences() {
+        try {
+            geofencingClient.removeGeofences(geofencePendingIntent).await()
+            val msg = "Toutes les géofences ont été purgées auprès de Google Play Services"
+            Log.i(tag, msg)
+            appLogger.i("GEOFENCE_CLEANUP", msg)
+        } catch (e: Exception) {
+            Log.w(tag, "Avertissement lors de la purge globale des géofences: ${e.message}")
+        }
+    }
+
     fun removeSingleGeofence(requestId: String) {
         geofencingClient.removeGeofences(listOf(requestId))
             .addOnSuccessListener {
@@ -425,8 +436,13 @@ class GeofenceManager @Inject constructor(
 
     fun removeGeofence(reminderId: Long) {
         val storedIds = prefs.getStringSet("geofences_$reminderId", emptySet()) ?: emptySet()
-        val defaultIds = listOf(reminderId.toString(), "${reminderId}_stage_dest", "${reminderId}_exit_zone") + (0..65).map { "${reminderId}_geo_$it" }
-        val idsToRemove = (storedIds + defaultIds).toList()
+        val defaultIds = listOf(reminderId.toString(), "${reminderId}_stage_dest", "${reminderId}_exit_zone") + (0..150).map { "${reminderId}_geo_$it" }
+        val prefix = "${reminderId}_"
+        val dynamicIds = prefs.all.keys
+            .filter { it.startsWith("place_name_${prefix}") || it.startsWith("place_lat_${prefix}") || it.startsWith("place_lng_${prefix}") }
+            .map { it.removePrefix("place_name_").removePrefix("place_lat_").removePrefix("place_lng_") }
+            .toSet()
+        val idsToRemove = (storedIds + defaultIds + dynamicIds).toSet().toList()
 
         // Nettoyer immédiatement les SharedPreferences pour que DrivingPulseService ne lise plus ces POIs
         val editor = prefs.edit()

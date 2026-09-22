@@ -314,12 +314,12 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 placeLabel = detectedPlaceName ?: reminder.placeLabel,
                                 placeLat = targetLat,
                                 placeLng = targetLng,
-                                status = ReminderStatus.ACTIVE
+                                status = if (reminder.isRepeating) ReminderStatus.ACTIVE else ReminderStatus.COMPLETED
                             )
                             reminderRepository.save(updatedReminder)
 
-                            // Démarrage automatique du suivi live 5s dans la zone (avec arrêt automatique à la sortie)
-                            if (targetLat != null && targetLng != null) {
+                            // Démarrage automatique du suivi live 5s dans la zone (avec arrêt automatique à la sortie) si répétitif
+                            if (reminder.isRepeating && targetLat != null && targetLng != null) {
                                 diagnosticTracker.startLiveZoneTracking(context, updatedReminder)
                             }
 
@@ -341,18 +341,11 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 )
                             } else {
                                 // Mode STANDARD (non répétitif) :
-                                if (reminder.placeCategory != null) {
-                                    // Pour les catégories POI, on désarme le POI spécifique déclenché pour éviter de sonner en boucle
-                                    geofenceManager.removeSingleGeofence(geofence.requestId)
-                                    prefs.edit()
-                                        .remove("place_name_${geofence.requestId}")
-                                        .remove("place_lat_${geofence.requestId}")
-                                        .remove("place_lng_${geofence.requestId}")
-                                        .apply()
-                                } else {
-                                    // Pour lieu fixe non répétitif : désarmer le géofence pour ne pas ré-alerter à chaque passage !
-                                    geofenceManager.removeGeofence(reminderId)
-                                }
+                                // Désarmer complètement toutes les zones (POIs catégorie, zone tampon et lieu fixe)
+                                val completeMsg = "Rappel non répétitif #${reminder.id} ('${reminder.text ?: "Lieu"}') validé et marqué TERMINÉ. Désarmement total de toutes les zones."
+                                android.util.Log.i("GeofenceReceiver", completeMsg)
+                                appLogger.i("REMINDER_COMPLETED", completeMsg, reminderId)
+                                geofenceManager.removeGeofence(reminderId)
                             }
                         }
                     }

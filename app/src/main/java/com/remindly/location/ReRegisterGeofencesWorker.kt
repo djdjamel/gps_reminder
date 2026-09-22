@@ -20,6 +20,7 @@ class ReRegisterGeofencesWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         try {
             android.util.Log.i("GeofenceRefresh", "Réenregistrement périodique des géofences lancé")
+            geofenceManager.removeAllGeofences()
             val activeReminders = reminderRepository.observePersonalActive().first()
             val locationReminders = activeReminders.filter { 
                 it.status == com.remindly.domain.model.ReminderStatus.ACTIVE &&
