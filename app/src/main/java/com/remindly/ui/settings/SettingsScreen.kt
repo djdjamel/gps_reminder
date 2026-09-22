@@ -730,6 +730,7 @@ fun SettingsScreen(
                     Spacer(Modifier.height(12.dp))
 
                     val rollingExitOptions = listOf(
+                        900 to "900 m",
                         1500 to "1.5 km",
                         2500 to "2.5 km",
                         3500 to "3.5 km",

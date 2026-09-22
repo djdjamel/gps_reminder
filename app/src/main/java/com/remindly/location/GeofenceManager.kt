@@ -239,7 +239,7 @@ class GeofenceManager @Inject constructor(
                                 Geofence.GEOFENCE_TRANSITION_EXIT
                             )
                             .setLoiteringDelay(8000)
-                            .setNotificationResponsiveness(3000)
+                            .setNotificationResponsiveness(1000)
                             .build()
                     }
 
@@ -353,7 +353,7 @@ class GeofenceManager @Inject constructor(
         lng: Double,
         radius: Float,
         reminderId: Long? = null,
-        responsivenessMs: Int = 3000
+        responsivenessMs: Int = 1000
     ) {
         val geofence = Geofence.Builder()
             .setRequestId(requestId)
@@ -415,7 +415,7 @@ class GeofenceManager @Inject constructor(
 
     fun removeGeofence(reminderId: Long) {
         val storedIds = prefs.getStringSet("geofences_$reminderId", emptySet()) ?: emptySet()
-        val defaultIds = listOf(reminderId.toString(), "${reminderId}_stage_dest", "${reminderId}_exit_zone") + (0..35).map { "${reminderId}_geo_$it" }
+        val defaultIds = listOf(reminderId.toString(), "${reminderId}_stage_dest", "${reminderId}_exit_zone") + (0..65).map { "${reminderId}_geo_$it" }
         val idsToRemove = (storedIds + defaultIds).toList()
 
         geofencingClient.removeGeofences(idsToRemove)

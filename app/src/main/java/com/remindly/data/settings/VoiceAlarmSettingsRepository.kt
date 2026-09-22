@@ -106,7 +106,7 @@ class VoiceAlarmSettingsRepositoryImpl(
                 poiDetectionRadiusM = preferences[PreferencesKeys.KEY_POI_DETECTION_RADIUS_M] ?: 450,
                 announcePlaceByVoice = preferences[PreferencesKeys.KEY_ANNOUNCE_PLACE_BY_VOICE] ?: true,
                 readTextRemindersAloud = preferences[PreferencesKeys.KEY_READ_TEXT_REMINDERS_ALOUD] ?: true,
-                rollingExitRadiusM = preferences[PreferencesKeys.KEY_ROLLING_EXIT_RADIUS_M] ?: 2500,
+                rollingExitRadiusM = preferences[PreferencesKeys.KEY_ROLLING_EXIT_RADIUS_M] ?: 900,
                 geofenceCooldownSeconds = preferences[PreferencesKeys.KEY_GEOFENCE_COOLDOWN_SECONDS] ?: 15,
                 smartGeofenceFiltering = preferences[PreferencesKeys.KEY_SMART_GEOFENCE_FILTERING] ?: true,
                 maxFilterSpeedKmh = preferences[PreferencesKeys.KEY_MAX_FILTER_SPEED_KMH] ?: 65,

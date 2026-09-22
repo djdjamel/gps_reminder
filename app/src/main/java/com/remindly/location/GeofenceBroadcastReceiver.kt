@@ -108,7 +108,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
                             val centerLat = prefs.getFloat("exit_center_lat_${reminderId}", Float.NaN)
                             val centerLng = prefs.getFloat("exit_center_lng_${reminderId}", Float.NaN)
-                            val exitRadiusM = prefs.getFloat("exit_radius_${reminderId}", 2500f)
+                            val exitRadiusM = prefs.getFloat("exit_radius_${reminderId}", 900f)
 
                             val triggerLoc = geofencingEvent.triggeringLocation
                             if (triggerLoc != null && !centerLat.isNaN() && !centerLng.isNaN()) {
@@ -269,7 +269,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 val notifier = ReminderNotifier(context)
                                 notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName, distanceMeters = distanceMeters)
 
-                                val shouldStartAudioService = (evaluation.decision == ContextDecision.FULL_ALARM) &&
+                                val shouldStartAudioService = (evaluation.decision == ContextDecision.FULL_ALARM ||
+                                    (evaluation.decision == ContextDecision.DISCREET_NOTIF && evaluation.score >= 45)) &&
                                     ((audioAttachment != null) || ((settings.readTextRemindersAloud || settings.announcePlaceByVoice) && !reminder.text.isNullOrBlank()))
 
                                 if (shouldStartAudioService) {

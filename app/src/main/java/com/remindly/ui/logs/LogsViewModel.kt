@@ -52,8 +52,8 @@ class LogsViewModel @Inject constructor(
         }
     }
 
-    fun exportLogsAsJson(): String {
-        val currentLogs = uiState.value.logs
+    fun exportLogsAsJson(): String = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+        val currentLogs = reminderLogDao.getLogsForExport(2000)
         val jsonArray = org.json.JSONArray()
         val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", java.util.Locale.US)
 
@@ -68,6 +68,6 @@ class LogsViewModel @Inject constructor(
             obj.put("message", log.message)
             jsonArray.put(obj)
         }
-        return jsonArray.toString(2)
+        jsonArray.toString(2)
     }
 }

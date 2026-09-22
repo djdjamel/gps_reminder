@@ -54,7 +54,10 @@ class DrivingPulseService : Service() {
     @Inject
     lateinit var contextEngine: ContextRelevanceEngine
 
-    private val lastDistanceByReminder = mutableMapOf<Long, DistanceSample>()
+    @Inject
+    lateinit var geofenceManager: GeofenceManager
+
+    private val lastDistanceByReminder = mutableMapOf<String, DistanceSample>()
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var fusedLocationClient: FusedLocationProviderClient
@@ -121,9 +124,9 @@ class DrivingPulseService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 40_000L)
-            .setMinUpdateIntervalMillis(25_000L)
-            .setMaxUpdateDelayMillis(50_000L)
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15_000L)
+            .setMinUpdateIntervalMillis(10_000L)
+            .setMaxUpdateDelayMillis(20_000L)
             .build()
 
         fusedLocationClient.requestLocationUpdates(
@@ -132,7 +135,7 @@ class DrivingPulseService : Service() {
             Looper.getMainLooper()
         )
 
-        val startMsg = "🚗 Mode Conduite : Démarrage du pulse GPS (1 point toutes les 40s)"
+        val startMsg = "🚗 Mode Conduite : Démarrage du pulse GPS réactif (1 point toutes les 15s - Haute Précision)"
         Log.i(TAG, startMsg)
         appLogger.i(ActivityTransitionReceiver.TAG_LOG, startMsg)
     }
@@ -164,9 +167,9 @@ class DrivingPulseService : Service() {
             isPaused = false
             consecutiveZeroSpeedCount = 0
 
-            val locationRequest = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 40_000L)
-                .setMinUpdateIntervalMillis(25_000L)
-                .setMaxUpdateDelayMillis(50_000L)
+            val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15_000L)
+                .setMinUpdateIntervalMillis(10_000L)
+                .setMaxUpdateDelayMillis(20_000L)
                 .build()
 
             fusedLocationClient.requestLocationUpdates(
@@ -175,7 +178,7 @@ class DrivingPulseService : Service() {
                 Looper.getMainLooper()
             )
 
-            val msg = "▶️ Mode Conduite repris après sortie de zone"
+            val msg = "▶️ Mode Conduite repris après sortie de zone (Haute Précision 15s)"
             Log.i(TAG, msg)
             appLogger.i(ActivityTransitionReceiver.TAG_LOG, msg)
         }
@@ -210,50 +213,114 @@ class DrivingPulseService : Service() {
                     (it.placeLat != null && it.placeLng != null) || it.placeCategory != null
                 }
                 val settings = settingsRepository.getSettings()
+                val prefs = getSharedPreferences("geofence_tracking", Context.MODE_PRIVATE)
 
                 var closestInfo = ""
                 if (locationReminders.isNotEmpty()) {
                     var minDistance = Float.MAX_VALUE
                     var closestLabel = ""
+                    val now = System.currentTimeMillis()
+
                     for (r in locationReminders) {
-                        val targetLat = r.placeLat
-                        val targetLng = r.placeLng
-                        if (targetLat != null && targetLng != null && targetLat != 0.0 && targetLng != 0.0) {
-                            val results = FloatArray(1)
-                            Location.distanceBetween(loc.latitude, loc.longitude, targetLat, targetLng, results)
-                            val dist = results[0]
-                            if (dist < minDistance) {
-                                minDistance = dist
-                                closestLabel = r.placeLabel ?: r.text ?: "Rappel"
+                        val detectionRadius = r.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
+
+                        if (r.placeCategory == null) {
+                            // 1. Lieu fixe délibéré (ex: 'stade', 'Chez Brahimi')
+                            val targetLat = r.placeLat
+                            val targetLng = r.placeLng
+                            if (targetLat != null && targetLng != null && targetLat != 0.0 && targetLng != 0.0) {
+                                val results = FloatArray(1)
+                                Location.distanceBetween(loc.latitude, loc.longitude, targetLat, targetLng, results)
+                                val dist = results[0]
+                                if (dist < minDistance) {
+                                    minDistance = dist
+                                    closestLabel = r.placeLabel ?: r.text ?: "Lieu fixe"
+                                }
+
+                                val sampleKey = "${r.id}_fixed"
+                                val prevSample = lastDistanceByReminder[sampleKey]
+                                val currentSample = DistanceSample(dist, now)
+                                lastDistanceByReminder[sampleKey] = currentSample
+                                val sampleList = if (prevSample != null) listOf(prevSample, currentSample) else listOf(currentSample)
+
+                                if (dist <= detectionRadius) {
+                                    if (r.placeActiveFromMillis == null || now >= r.placeActiveFromMillis) {
+                                        val evaluation = contextEngine.evaluate(
+                                            reminder = r,
+                                            currentLocation = loc,
+                                            targetLat = targetLat,
+                                            targetLng = targetLng,
+                                            currentDistanceM = dist,
+                                            recentDistances = sampleList,
+                                            overrideActivity = com.google.android.gms.location.DetectedActivity.IN_VEHICLE
+                                        )
+                                        if (evaluation.decision != ContextDecision.SUPPRESS) {
+                                            triggerReminderFromPulse(r, dist, loc, settings, evaluation)
+                                        } else {
+                                            Log.d(TAG, "Déclenchement supprimé par ContextEngine: ${evaluation.reason} pour ${r.text}")
+                                        }
+                                    }
+                                }
                             }
+                        } else {
+                            // 2. Rappel par Catégorie (POIs armés ex: 'ph' / pharmacies)
+                            val trackedIds = prefs.getStringSet("geofences_${r.id}", emptySet()) ?: emptySet()
+                            for (reqId in trackedIds) {
+                                if (reqId.endsWith("_exit_zone") || reqId.endsWith("_stage_dest")) continue
 
-                            val detectionRadius = r.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
-                            val now = System.currentTimeMillis()
-                            val prevSample = lastDistanceByReminder[r.id]
-                            val currentSample = DistanceSample(dist, now)
-                            lastDistanceByReminder[r.id] = currentSample
-                            val sampleList = if (prevSample != null) listOf(prevSample, currentSample) else listOf(currentSample)
+                                val poiLat = prefs.getFloat("place_lat_$reqId", Float.NaN)
+                                val poiLng = prefs.getFloat("place_lng_$reqId", Float.NaN)
+                                val poiName = prefs.getString("place_name_$reqId", null) ?: r.placeLabel ?: "Commerce"
 
-                            if (dist <= detectionRadius) {
-                                if (r.placeActiveFromMillis == null || now >= r.placeActiveFromMillis) {
-                                    val evaluation = contextEngine.evaluate(
-                                        reminder = r,
-                                        currentLocation = loc,
-                                        targetLat = targetLat,
-                                        targetLng = targetLng,
-                                        currentDistanceM = dist,
-                                        recentDistances = sampleList,
-                                        overrideActivity = com.google.android.gms.location.DetectedActivity.IN_VEHICLE
-                                    )
-                                    if (evaluation.decision != ContextDecision.SUPPRESS) {
-                                        triggerReminderFromPulse(r, dist, loc, settings, evaluation)
-                                    } else {
-                                        Log.d(TAG, "Déclenchement supprimé par ContextEngine: ${evaluation.reason} pour ${r.text}")
+                                if (!poiLat.isNaN() && !poiLng.isNaN()) {
+                                    val results = FloatArray(1)
+                                    Location.distanceBetween(loc.latitude, loc.longitude, poiLat.toDouble(), poiLng.toDouble(), results)
+                                    val dist = results[0]
+                                    if (dist < minDistance) {
+                                        minDistance = dist
+                                        closestLabel = poiName
+                                    }
+
+                                    val sampleKey = "${r.id}_$reqId"
+                                    val prevSample = lastDistanceByReminder[sampleKey]
+                                    val currentSample = DistanceSample(dist, now)
+                                    lastDistanceByReminder[sampleKey] = currentSample
+                                    val sampleList = if (prevSample != null) listOf(prevSample, currentSample) else listOf(currentSample)
+
+                                    if (dist <= detectionRadius) {
+                                        if (r.placeActiveFromMillis == null || now >= r.placeActiveFromMillis) {
+                                            val evaluation = contextEngine.evaluate(
+                                                reminder = r,
+                                                currentLocation = loc,
+                                                targetLat = poiLat.toDouble(),
+                                                targetLng = poiLng.toDouble(),
+                                                currentDistanceM = dist,
+                                                recentDistances = sampleList,
+                                                overrideActivity = com.google.android.gms.location.DetectedActivity.IN_VEHICLE
+                                            )
+                                            if (evaluation.decision != ContextDecision.SUPPRESS) {
+                                                triggerReminderFromPulse(
+                                                    reminder = r,
+                                                    distanceMeters = dist,
+                                                    loc = loc,
+                                                    settings = settings,
+                                                    evaluation = evaluation,
+                                                    poiName = poiName,
+                                                    poiLat = poiLat.toDouble(),
+                                                    poiLng = poiLng.toDouble(),
+                                                    poiReqId = reqId
+                                                )
+                                                break // Éviter de déclencher 2 POIs sur le même pulse
+                                            } else {
+                                                Log.d(TAG, "POI '$poiName' filtré par ContextEngine: ${evaluation.reason}")
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+
                     if (minDistance != Float.MAX_VALUE) {
                         val distFormatted = if (minDistance < 1000f) {
                             "${minDistance.toInt()}m"
@@ -284,7 +351,11 @@ class DrivingPulseService : Service() {
         distanceMeters: Float,
         loc: Location,
         settings: VoiceAlarmSettings,
-        evaluation: ContextEvaluation
+        evaluation: ContextEvaluation,
+        poiName: String? = null,
+        poiLat: Double? = null,
+        poiLng: Double? = null,
+        poiReqId: String? = null
     ) {
         val reminderId = reminder.id
         val prefs = getSharedPreferences("geofence_tracking", Context.MODE_PRIVATE)
@@ -293,8 +364,7 @@ class DrivingPulseService : Service() {
         val cooldownMs = settings.geofenceCooldownSeconds * 1000L
         val isCooldown = (now - lastTrigger) < cooldownMs
 
-        val placeName = reminder.placeLabel ?: reminder.text ?: "Lieu"
-        val radius = (reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()).toInt()
+        val placeName = poiName ?: reminder.placeLabel ?: reminder.text ?: "Lieu"
         val triggerMsg = "🎯 [PULSE_TRIGGERED] Déclenchement autonome par Pulse Conduite pour '$placeName' à ${distanceMeters.toInt()}m (Score: ${evaluation.score}pts - ${evaluation.decision})"
         Log.i(TAG, triggerMsg)
         appLogger.i("CONTEXT_SCORE", "Score: ${evaluation.score}pts [${evaluation.decision}] | ${evaluation.factors.joinToString { "${it.description} (${it.points}p)" }}", reminderId)
@@ -307,12 +377,13 @@ class DrivingPulseService : Service() {
 
             notifier.showPlaceReminder(
                 reminder = reminder,
-                detectedPlaceName = reminder.placeLabel,
+                detectedPlaceName = placeName,
                 distanceMeters = distanceMeters
             )
 
             val audioAttachment = reminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
-            val shouldStartAudioService = (evaluation.decision == ContextDecision.FULL_ALARM) &&
+            val shouldStartAudioService = (evaluation.decision == ContextDecision.FULL_ALARM ||
+                (evaluation.decision == ContextDecision.DISCREET_NOTIF && evaluation.score >= 45)) &&
                 ((audioAttachment != null) || ((settings.readTextRemindersAloud || settings.announcePlaceByVoice) && !reminder.text.isNullOrBlank()))
 
             if (shouldStartAudioService) {
@@ -322,7 +393,7 @@ class DrivingPulseService : Service() {
                         audioPath = audioAttachment?.localPath,
                         reminderText = reminder.text ?: "Rappel",
                         reminderId = reminderId,
-                        placeName = reminder.placeLabel,
+                        placeName = placeName,
                         distanceMeters = distanceMeters
                     )
                     appLogger.success("NOTIFICATION_FIRED", "Alarme vocale/TTS lancée (Pulse Conduite)", reminderId)
@@ -341,17 +412,31 @@ class DrivingPulseService : Service() {
                 Log.i(TAG, cancelMsg)
                 appLogger.i("MUTUAL_CANCELLATION", cancelMsg, reminderId)
             }
+
+            // Mode standard pour POI de catégorie : désarmer le POI spécifique déclenché pour éviter de sonner en boucle
+            if (!reminder.isRepeating && reminder.placeCategory != null && poiReqId != null) {
+                geofenceManager.removeSingleGeofence(poiReqId)
+                prefs.edit()
+                    .remove("place_name_$poiReqId")
+                    .remove("place_lat_$poiReqId")
+                    .remove("place_lng_$poiReqId")
+                    .apply()
+            }
         } else {
             notifier.showPlaceReminder(
                 reminder = reminder,
-                detectedPlaceName = reminder.placeLabel,
+                detectedPlaceName = placeName,
                 distanceMeters = distanceMeters
             )
             appLogger.i("NOTIFICATION_FIRED", "Notification rafraîchie pour '$placeName' (Pulse Conduite - Cooldown de ${settings.geofenceCooldownSeconds}s actif)", reminderId)
         }
 
+        val targetReminder = if (poiLat != null && poiLng != null) {
+            reminder.copy(placeLabel = placeName, placeLat = poiLat, placeLng = poiLng)
+        } else reminder
+
         // Démarrage automatique du suivi live 5s dans la zone
-        diagnosticTracker.startLiveZoneTracking(this@DrivingPulseService, reminder)
+        diagnosticTracker.startLiveZoneTracking(this@DrivingPulseService, targetReminder)
 
         // Handoff immédiat : mettre le pulse en pause pour céder la place au suivi intensif 5s
         pausePulse()

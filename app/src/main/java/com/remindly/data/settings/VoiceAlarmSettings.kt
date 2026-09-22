@@ -18,8 +18,8 @@ data class VoiceAlarmSettings(
     val announcePlaceByVoice: Boolean = true,
     // Lire les rappels textuels à voix haute par synthèse vocale
     val readTextRemindersAloud: Boolean = true,
-    // Rayon de la zone tampon de sortie (Fenêtre glissante pour déplacements) en mètres (défaut : 2500m / 2.5 km)
-    val rollingExitRadiusM: Int = 2500,
+    // Rayon de la zone tampon de sortie (Fenêtre glissante pour déplacements) en mètres (défaut : 900m)
+    val rollingExitRadiusM: Int = 900,
     // Délai anti-rebond entre alertes successives pour le même rappel en secondes (défaut : 15s)
     val geofenceCooldownSeconds: Int = 15,
     // Filtrage intelligent de pertinence des géofences (Vitesse de transit autoroute + Direction/Cap)

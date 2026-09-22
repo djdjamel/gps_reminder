@@ -14,6 +14,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.*
@@ -35,39 +36,71 @@ class NearbyPlacesService @Inject constructor(
 
     /**
      * Recherche les établissements d'une catégorie autour d'un point central.
-     * Utilise Google Places nearbysearch HTTP officiel avec les types officiels (supermarket, etc.).
+     * Utilise conjointement Google Places nearbysearch HTTP officiel et OpenStreetMap (Overpass API)
+     * pour garantir une couverture exhaustive (ex: 100% des pharmacies locales en Algérie/zones denses).
      */
     suspend fun searchNearby(
         centerLat: Double,
         centerLng: Double,
         radiusMeters: Int,
         category: PlaceCategory,
-        maxResults: Int = 20
+        maxResults: Int = 60
     ): List<NearbyPlace> = supervisorScope {
         try {
             val allTypes = listOf(category.primaryType) + category.secondaryTypes
             val placesMap = mutableMapOf<String, NearbyPlace>()
 
-            // 1. Recherche par types officiels Google (ex: supermarket + convenience_store)
-            for (type in allTypes) {
-                val found = fetchNearbyPlacesHttp(centerLat, centerLng, radiusMeters, type = type, keyword = null)
-                for (p in found) {
-                    placesMap[p.placeId] = p
+            // 1. Requête Google Places en asynchrone
+            val googleDeferred = async {
+                val gMap = mutableMapOf<String, NearbyPlace>()
+                for (type in allTypes) {
+                    val found = fetchNearbyPlacesHttp(centerLat, centerLng, radiusMeters, type = type, keyword = null)
+                    for (p in found) {
+                        gMap[p.placeId] = p
+                    }
                 }
+                if (gMap.isEmpty() && category.keywords.isNotEmpty()) {
+                    for (kw in category.keywords.take(2)) {
+                        val found = fetchNearbyPlacesHttp(centerLat, centerLng, radiusMeters, type = null, keyword = kw)
+                        for (p in found) {
+                            gMap[p.placeId] = p
+                        }
+                    }
+                }
+                gMap.values.toList()
             }
 
-            // 2. Si aucun résultat (zone avec types moins précis), tenter avec les mots-clés
-            if (placesMap.isEmpty() && category.keywords.isNotEmpty()) {
-                for (kw in category.keywords.take(2)) {
-                    val found = fetchNearbyPlacesHttp(centerLat, centerLng, radiusMeters, type = null, keyword = kw)
-                    for (p in found) {
-                        placesMap[p.placeId] = p
-                    }
+            // 2. Requête OpenStreetMap / Overpass en asynchrone (exhaustivité des commerces de quartier)
+            val overpassDeferred = async {
+                fetchOverpassPlacesHttp(centerLat, centerLng, radiusMeters, category)
+            }
+
+            val googleResults = try { googleDeferred.await() } catch (t: Throwable) {
+                Log.w(tag, "Google Places fetch error: ${t.message}")
+                emptyList()
+            }
+            val overpassResults = try { overpassDeferred.await() } catch (t: Throwable) {
+                Log.w(tag, "Overpass fetch error: ${t.message}")
+                emptyList()
+            }
+
+            // 3. Fusionner les résultats : d'abord Google Places
+            for (p in googleResults) {
+                placesMap[p.placeId] = p
+            }
+
+            // Ajouter les POIs Overpass non encore répertoriés (dédoublonnage à 35 mètres)
+            for (op in overpassResults) {
+                val isDuplicate = placesMap.values.any { existing ->
+                    calculateDistance(existing.latitude, existing.longitude, op.latitude, op.longitude) < 35f
+                }
+                if (!isDuplicate) {
+                    placesMap[op.placeId] = op
                 }
             }
 
             val sorted = placesMap.values.sortedBy { it.distanceMeters }.take(maxResults)
-            Log.d(tag, "searchNearby ($centerLat, $centerLng) category=${category.id} -> ${sorted.size} POIs trouvés")
+            Log.d(tag, "searchNearby ($centerLat, $centerLng) category=${category.id} -> ${sorted.size} POIs uniques trouvés (Google: ${googleResults.size}, OSM: ${overpassResults.size})")
             sorted
         } catch (t: Throwable) {
             Log.e(tag, "Erreur searchNearby: ${t.message}", t)
@@ -100,7 +133,7 @@ class NearbyPlacesService @Inject constructor(
                         centerLng = point.longitude,
                         radiusMeters = radiusPerPointMeters,
                         category = category,
-                        maxResults = 8
+                        maxResults = 12
                     )
                 }
             }
@@ -114,7 +147,7 @@ class NearbyPlacesService @Inject constructor(
 
             val totalFound = placesMap.values.toList()
             Log.d(tag, "searchAlongWaypoints TOTAL: ${totalFound.size} POIs uniques trouvés le long du trajet")
-            totalFound.take(30)
+            totalFound.take(60)
         } catch (t: Throwable) {
             Log.e(tag, "Erreur searchAlongWaypoints: ${t.message}", t)
             emptyList()
@@ -268,5 +301,118 @@ class NearbyPlacesService @Inject constructor(
                 sin(dLon / 2).pow(2.0)
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return (earthRadius * c).toFloat()
+    }
+
+    /**
+     * Requête Overpass API (OpenStreetMap) pour récupérer tous les commerces de la catégorie spécifiée
+     */
+    private suspend fun fetchOverpassPlacesHttp(
+        centerLat: Double,
+        centerLng: Double,
+        radiusMeters: Int,
+        category: PlaceCategory
+    ): List<NearbyPlace> = withContext(Dispatchers.IO) {
+        try {
+            val filter = getOverpassFilter(category)
+            val formattedFilter = String.format(
+                Locale.US,
+                filter,
+                radiusMeters, centerLat, centerLng,
+                radiusMeters, centerLat, centerLng
+            )
+            val query = "[out:json][timeout:10];($formattedFilter);out center;"
+            val url = URL("https://overpass-api.de/api/interpreter")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.connectTimeout = 7000
+            connection.readTimeout = 7000
+            connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+            connection.setRequestProperty("User-Agent", "RemindlyApp/1.0 (Android)")
+
+            val postData = "data=" + URLEncoder.encode(query, "UTF-8")
+            connection.outputStream.use { os ->
+                os.write(postData.toByteArray(Charsets.UTF_8))
+                os.flush()
+            }
+
+            val responseCode = connection.responseCode
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(responseText)
+                val elements = json.optJSONArray("elements") ?: return@withContext emptyList()
+                val places = mutableListOf<NearbyPlace>()
+
+                for (i in 0 until elements.length()) {
+                    val el = elements.getJSONObject(i)
+                    val type = el.optString("type")
+                    val id = el.optLong("id")
+                    val tags = el.optJSONObject("tags")
+
+                    var lat = el.optDouble("lat", Double.NaN)
+                    var lon = el.optDouble("lon", Double.NaN)
+                    if (lat.isNaN() || lon.isNaN()) {
+                        val center = el.optJSONObject("center")
+                        if (center != null) {
+                            lat = center.optDouble("lat", Double.NaN)
+                            lon = center.optDouble("lon", Double.NaN)
+                        }
+                    }
+
+                    if (!lat.isNaN() && !lon.isNaN()) {
+                        val osmName = tags?.optString("name")?.takeIf { it.isNotBlank() }
+                            ?: tags?.optString("name:fr")?.takeIf { it.isNotBlank() }
+                            ?: tags?.optString("name:ar")?.takeIf { it.isNotBlank() }
+                            ?: category.displayName
+                        val dist = calculateDistance(centerLat, centerLng, lat, lon)
+                        places.add(
+                            NearbyPlace(
+                                placeId = "osm_${type}_$id",
+                                name = osmName,
+                                latitude = lat,
+                                longitude = lon,
+                                distanceMeters = dist
+                            )
+                        )
+                    }
+                }
+                Log.d(tag, "Overpass OSM: ${places.size} POIs trouvés pour ${category.id}")
+                return@withContext places
+            } else {
+                Log.w(tag, "Overpass API returned HTTP $responseCode")
+            }
+        } catch (t: Throwable) {
+            Log.w(tag, "Overpass API fetch error (repli Google Places): ${t.message}")
+        }
+        emptyList()
+    }
+
+    private fun getOverpassFilter(category: PlaceCategory): String {
+        return when (category) {
+            PlaceCategory.PHARMACY -> """
+                node["amenity"="pharmacy"](around:%d,%f,%f);
+                way["amenity"="pharmacy"](around:%d,%f,%f);
+            """.trimIndent()
+            PlaceCategory.SUPERMARKET -> """
+                node["shop"~"supermarket|convenience|grocery"](around:%d,%f,%f);
+                way["shop"~"supermarket|convenience|grocery"](around:%d,%f,%f);
+            """.trimIndent()
+            PlaceCategory.BAKERY -> """
+                node["shop"="bakery"](around:%d,%f,%f);
+                way["shop"="bakery"](around:%d,%f,%f);
+            """.trimIndent()
+            PlaceCategory.GAS_STATION -> """
+                node["amenity"="fuel"](around:%d,%f,%f);
+                way["amenity"="fuel"](around:%d,%f,%f);
+            """.trimIndent()
+            PlaceCategory.ATM -> """
+                node["amenity"~"atm|bank"](around:%d,%f,%f);
+                way["amenity"~"atm|bank"](around:%d,%f,%f);
+            """.trimIndent()
+            PlaceCategory.RESTAURANT -> """
+                node["amenity"~"restaurant|cafe|fast_food"](around:%d,%f,%f);
+                way["amenity"~"restaurant|cafe|fast_food"](around:%d,%f,%f);
+            """.trimIndent()
+        }
     }
 }

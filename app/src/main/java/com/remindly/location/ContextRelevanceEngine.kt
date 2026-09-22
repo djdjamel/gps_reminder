@@ -108,7 +108,25 @@ class ContextRelevanceEngine @Inject constructor(
             }
         }
 
-        // B. Activité physique et Détection d'Arrivée (Stationnement)
+        // B. Proximité immédiate / dans le rayon de détection
+        if (currentDistanceM != null) {
+            when {
+                currentDistanceM <= 150f -> {
+                    totalScore += 25
+                    factors.add(ScoreFactor("Très proche du POI (${currentDistanceM.toInt()}m <= 150m)", 25))
+                }
+                currentDistanceM <= 300f -> {
+                    totalScore += 15
+                    factors.add(ScoreFactor("Dans le rayon de détection (${currentDistanceM.toInt()}m <= 300m)", 15))
+                }
+                currentDistanceM <= 500f -> {
+                    totalScore += 5
+                    factors.add(ScoreFactor("Zone périphérique (${currentDistanceM.toInt()}m <= 500m)", 5))
+                }
+            }
+        }
+
+        // C. Activité physique et Détection d'Arrivée (Stationnement)
         val activity = overrideActivity ?: userActivityTracker.currentActivity.value
         val isPostDriving = userActivityTracker.isPostDrivingArrival()
 
@@ -136,7 +154,7 @@ class ContextRelevanceEngine @Inject constructor(
             }
         }
 
-        // C. Cap et Cône d'approche (Bearing)
+        // D. Cap et Cône d'approche (Bearing)
         val effectiveBearing = overrideBearing ?: if (currentLocation != null && currentLocation.hasBearing()) currentLocation.bearing else null
         val effectiveCurrentLat = overrideCurrentLat ?: currentLocation?.latitude
         val effectiveCurrentLng = overrideCurrentLng ?: currentLocation?.longitude
@@ -159,13 +177,17 @@ class ContextRelevanceEngine @Inject constructor(
                     factors.add(ScoreFactor("Approche latérale (Angle: ${angleDiff.toInt()}° <= 90°)", 10))
                 }
                 angleDiff > 110f -> {
-                    totalScore -= 30
-                    factors.add(ScoreFactor("Dos au POI / sens inverse (Angle: ${angleDiff.toInt()}°)", -30))
+                    if ((currentDistanceM ?: 999f) > 80f) {
+                        totalScore -= 30
+                        factors.add(ScoreFactor("Dos au POI / sens inverse (Angle: ${angleDiff.toInt()}°)", -30))
+                    } else {
+                        factors.add(ScoreFactor("Proximité immédiate (Angle ignoré car à ${currentDistanceM?.toInt()}m)", 0))
+                    }
                 }
             }
         }
 
-        // D. Vitesse et Décélération (Δv / Δt)
+        // E. Vitesse et Décélération (Δv / Δt)
         val speedKmh = overrideSpeedKmh ?: if (currentLocation != null && currentLocation.hasSpeed()) currentLocation.speed * 3.6f else null
         if (speedKmh != null) {
             // Décélération mesurée sur l'historique récent

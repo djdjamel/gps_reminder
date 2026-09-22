@@ -25,6 +25,9 @@ class PassiveLocationReceiver : BroadcastReceiver() {
     @Inject
     lateinit var reminderRepository: ReminderRepository
 
+    @Inject
+    lateinit var vehicleModeManager: VehicleModeManager
+
     override fun onReceive(context: Context, intent: Intent) {
         if (!LocationResult.hasResult(intent)) return
         val locationResult = LocationResult.extractResult(intent) ?: return
@@ -54,6 +57,10 @@ class PassiveLocationReceiver : BroadcastReceiver() {
                     val accuracy = if (loc.hasAccuracy()) loc.accuracy else 0f
                     val speedKmh = if (loc.hasSpeed()) (loc.speed * 3.6f).toInt() else 0
                     val bearing = if (loc.hasBearing()) "${loc.bearing.toInt()}°" else "-"
+
+                    if (speedKmh >= 25 && locationReminders.isNotEmpty()) {
+                        vehicleModeManager.onVehicleEnter()
+                    }
 
                     val (sourceIcon, sourceName) = classifyLocationSource(loc.provider, accuracy)
 
@@ -86,10 +93,16 @@ class PassiveLocationReceiver : BroadcastReceiver() {
                     val logMessage = "$sourceIcon $sourceName (±${accuracy.toInt()}m) | Δt: $deltaStr$blackHoleWarning | $speedKmh km/h | Cap: $bearing$closestInfo"
                     android.util.Log.i("PassiveLoc", logMessage)
 
-                    if (isBlackHole) {
-                        appLogger.w("PASSIVE_LOC", logMessage)
-                    } else {
-                        appLogger.i("PASSIVE_LOC", logMessage)
+                    val lastDbLogTime = prefs.getLong("last_db_log_time", 0L)
+                    val shouldWriteToDb = isBlackHole || (now - lastDbLogTime >= 15_000L)
+
+                    if (shouldWriteToDb) {
+                        prefs.edit().putLong("last_db_log_time", now).apply()
+                        if (isBlackHole) {
+                            appLogger.w("PASSIVE_LOC", logMessage)
+                        } else {
+                            appLogger.i("PASSIVE_LOC", logMessage)
+                        }
                     }
                 }
             } catch (e: Exception) {
