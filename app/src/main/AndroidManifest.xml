@@ -71,7 +71,12 @@
             android:exported="false" />
         <receiver
             android:name=".location.ActivityTransitionReceiver"
-            android:exported="false" />
+            android:exported="true"
+            android:permission="com.google.android.gms.permission.ACTIVITY_RECOGNITION">
+            <intent-filter>
+                <action android:name="com.remindly.action.ACTION_ACTIVITY_TRANSITION_EVENT" />
+            </intent-filter>
+        </receiver>
         <service
             android:name=".location.DrivingPulseService"
             android:foregroundServiceType="location"

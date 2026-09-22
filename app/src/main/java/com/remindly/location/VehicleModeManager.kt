@@ -33,9 +33,13 @@ class VehicleModeManager @Inject constructor(
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
     private val activityClient = ActivityRecognition.getClient(context)
+    @Volatile
+    private var isMonitoring = false
 
     private val transitionPendingIntent: PendingIntent by lazy {
-        val intent = Intent(context, ActivityTransitionReceiver::class.java)
+        val intent = Intent(context, ActivityTransitionReceiver::class.java).apply {
+            action = "com.remindly.action.ACTION_ACTIVITY_TRANSITION_EVENT"
+        }
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
         } else {
@@ -53,25 +57,34 @@ class VehicleModeManager @Inject constructor(
             return
         }
 
+        if (isMonitoring) {
+            Log.d(TAG, "Surveillance des transitions d'activité déjà active")
+            return
+        }
+
         try {
             val transitions = buildActivityTransitions()
             val request = ActivityTransitionRequest(transitions)
 
             activityClient.requestActivityTransitionUpdates(request, transitionPendingIntent)
                 .addOnSuccessListener {
+                    isMonitoring = true
                     Log.i(TAG, "Surveillance des transitions d'activité enregistrée avec succès")
                     appLogger.i(ActivityTransitionReceiver.TAG_LOG, "Surveillance automatique des transitions d'activité activée")
                 }
                 .addOnFailureListener { e ->
+                    isMonitoring = false
                     Log.e(TAG, "Erreur enregistrement transitions d'activité: ${e.message}", e)
                     appLogger.e(ActivityTransitionReceiver.TAG_LOG, "Erreur activation détection activité: ${e.message}")
                 }
         } catch (e: Exception) {
+            isMonitoring = false
             Log.e(TAG, "Exception startMonitoring: ${e.message}", e)
         }
     }
 
     fun stopMonitoring() {
+        isMonitoring = false
         try {
             activityClient.removeActivityTransitionUpdates(transitionPendingIntent)
                 .addOnSuccessListener {

@@ -24,7 +24,10 @@ import com.google.accompanist.permissions.rememberPermissionState
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun PermissionsWrapper(content: @Composable () -> Unit) {
+fun PermissionsWrapper(
+    onPermissionsGranted: (() -> Unit)? = null,
+    content: @Composable () -> Unit
+) {
     val permissions = mutableListOf(
         android.Manifest.permission.ACCESS_FINE_LOCATION,
         android.Manifest.permission.ACCESS_COARSE_LOCATION,
@@ -40,6 +43,12 @@ fun PermissionsWrapper(content: @Composable () -> Unit) {
 
     val permissionState = rememberMultiplePermissionsState(permissions = permissions)
     var skipped by remember { mutableStateOf(false) }
+
+    LaunchedEffect(permissionState.allPermissionsGranted) {
+        if (permissionState.allPermissionsGranted) {
+            onPermissionsGranted?.invoke()
+        }
+    }
 
     val context = LocalContext.current
     
