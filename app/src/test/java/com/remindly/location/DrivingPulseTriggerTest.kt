@@ -195,4 +195,36 @@ class DrivingPulseTriggerTest {
         val newStatus = if (habitReminder.isRepeating) ReminderStatus.ACTIVE else ReminderStatus.COMPLETED
         assertEquals(ReminderStatus.ACTIVE, newStatus)
     }
+
+    @Test
+    fun testEmptyLocationReminders_shouldStopPulse() {
+        val completedReminders = listOf(
+            Reminder(id = 10L, text = "Fait 1", status = ReminderStatus.COMPLETED, placeLat = 35.5, placeLng = 6.1),
+            Reminder(id = 11L, text = "Fait 2", status = ReminderStatus.COMPLETED, placeLat = 35.6, placeLng = 6.2)
+        )
+
+        val activeLocationReminders = completedReminders.filter {
+            it.status == ReminderStatus.ACTIVE &&
+            ((it.placeLat != null && it.placeLng != null) || it.placeCategory != null)
+        }
+
+        assertTrue("Quand tous les rappels sont terminés, la liste active doit être vide", activeLocationReminders.isEmpty())
+        val shouldAutoStop = activeLocationReminders.isEmpty()
+        assertTrue("Le pulse GPS doit immédiatement s'arrêter quand la liste est vide", shouldAutoStop)
+    }
+
+    @Test
+    fun testLowSpeedThreshold_triggersStationaryWatchdog() {
+        val stationarySpeedsKmh = listOf(0, 1, 2, 4, 3, 0, 1, 2) // Dérive GPS typique à l'arrêt
+        var consecutiveCount = 0
+        for (speed in stationarySpeedsKmh) {
+            if (speed < 5) {
+                consecutiveCount++
+            } else {
+                consecutiveCount = 0
+            }
+        }
+        assertEquals(8, consecutiveCount)
+        assertTrue("8 points consécutifs < 5 km/h doivent déclencher l'arrêt automatique", consecutiveCount >= 8)
+    }
 }

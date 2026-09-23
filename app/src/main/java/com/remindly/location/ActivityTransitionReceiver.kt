@@ -43,8 +43,9 @@ class ActivityTransitionReceiver : BroadcastReceiver() {
                         vehicleModeManager.onVehicleExit()
                     }
                 }
-            } else if (event.activityType == DetectedActivity.STILL && event.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER) {
-                vehicleModeManager.onStillEnter()
+            } else if ((event.activityType == DetectedActivity.STILL || event.activityType == DetectedActivity.WALKING) &&
+                event.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER) {
+                vehicleModeManager.onVehicleExit()
             }
         }
     }

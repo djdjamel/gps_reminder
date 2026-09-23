@@ -65,6 +65,7 @@ class DiagnosticLocationService : Service() {
     private var hasConfirmedEntry: Boolean = false
 
     private var isTracking = false
+    private var trackingStartTimeMillis: Long = 0L
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -112,6 +113,7 @@ class DiagnosticLocationService : Service() {
     @SuppressLint("MissingPermission")
     private fun startTracking() {
         isTracking = true
+        trackingStartTimeMillis = System.currentTimeMillis()
 
         val initialNotification = buildNotification("Connexion au signal GPS...", 0f, 0f, 0f)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -210,6 +212,16 @@ class DiagnosticLocationService : Service() {
             return
         }
 
+        // Timeout de sécurité : arrêt automatique après 5 minutes pour préserver la batterie
+        if (System.currentTimeMillis() - trackingStartTimeMillis > 300_000L) {
+            val timeoutMsg = "Arrêt automatique du suivi 5s : délai maximal de sécurité de 5 min atteint pour rappel #$reminderId"
+            android.util.Log.i(TAG, timeoutMsg)
+            appLogger.i("DIAG_GPS", timeoutMsg, reminderId)
+            stopTracking()
+            stopSelf()
+            return
+        }
+
         val distFormatted = if (distanceM < 1000f) "${distanceM.toInt()} m" else String.format(Locale.ROOT, "%.2f km", distanceM / 1000f)
         val notifText = "Distance : $distFormatted (±${accuracyM.toInt()}m) | Vitesse : ${speedKmh.toInt()} km/h"
 
@@ -220,14 +232,20 @@ class DiagnosticLocationService : Service() {
             serviceScope.launch {
                 try {
                     val rem = reminderRepository.getById(reminderId)
-                    if (rem != null && rem.status == ReminderStatus.ACTIVE) {
-                        val notifier = ReminderNotifier(this@DiagnosticLocationService)
-                        notifier.showPlaceReminder(
-                            reminder = rem,
-                            detectedPlaceName = rem.placeLabel,
-                            distanceMeters = distanceM
-                        )
+                    if (rem == null || rem.status != ReminderStatus.ACTIVE) {
+                        val stopMsg = "Arrêt automatique du suivi 5s : le rappel #$reminderId n'est plus actif (status=${rem?.status})"
+                        android.util.Log.i(TAG, stopMsg)
+                        appLogger.i("DIAG_GPS", stopMsg, reminderId)
+                        stopTracking()
+                        stopSelf()
+                        return@launch
                     }
+                    val notifier = ReminderNotifier(this@DiagnosticLocationService)
+                    notifier.showPlaceReminder(
+                        reminder = rem,
+                        detectedPlaceName = rem.placeLabel,
+                        distanceMeters = distanceM
+                    )
                 } catch (_: Exception) {}
             }
         }

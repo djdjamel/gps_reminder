@@ -192,11 +192,11 @@ class DrivingPulseService : Service() {
         val speedKmh = if (loc.hasSpeed()) (loc.speed * 3.6f).toInt() else 0
         val bearing = if (loc.hasBearing()) "${loc.bearing.toInt()}°" else "-"
 
-        // Watchdog d'inactivité : Si vitesse nulle pendant 15 points consécutifs (~10 min), auto-arrêt
-        if (speedKmh == 0) {
+        // Watchdog d'inactivité : Si vitesse < 5 km/h pendant 8 points consécutifs (~2 min), auto-arrêt
+        if (speedKmh < 5) {
             consecutiveZeroSpeedCount++
-            if (consecutiveZeroSpeedCount >= 15) {
-                val autoStopMsg = "🛑 Mode Conduite : Arrêt automatique après 10 min d'immobilité prolongée"
+            if (consecutiveZeroSpeedCount >= 8) {
+                val autoStopMsg = "🛑 Mode Conduite : Arrêt automatique après 2 min d'immobilité prolongée (< 5 km/h)"
                 Log.i(TAG, autoStopMsg)
                 appLogger.i(ActivityTransitionReceiver.TAG_LOG, autoStopMsg)
                 stopPulse()
@@ -214,6 +214,17 @@ class DrivingPulseService : Service() {
                     it.status == com.remindly.domain.model.ReminderStatus.ACTIVE &&
                     ((it.placeLat != null && it.placeLng != null) || it.placeCategory != null)
                 }
+
+                // Si plus aucun rappel de lieu n'est actif, arrêter immédiatement le pulse et libérer le GPS
+                if (locationReminders.isEmpty()) {
+                    val noReminderMsg = "🛑 Mode Conduite : Aucun rappel de lieu actif restant -> Arrêt immédiat du Pulse GPS (retour veille 0%)"
+                    Log.i(TAG, noReminderMsg)
+                    appLogger.i(ActivityTransitionReceiver.TAG_LOG, noReminderMsg)
+                    stopPulse()
+                    stopSelf()
+                    return@launch
+                }
+
                 val settings = settingsRepository.getSettings()
                 val prefs = getSharedPreferences("geofence_tracking", Context.MODE_PRIVATE)
 
