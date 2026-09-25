@@ -10,7 +10,10 @@ import com.google.android.gms.location.GeofencingEvent
 import com.remindly.data.repo.ReminderRepository
 import com.remindly.data.settings.VoiceAlarmSettingsRepository
 import com.remindly.domain.model.AttachmentType
+import com.remindly.domain.model.Reminder
 import com.remindly.domain.model.ReminderStatus
+import com.remindly.location.registry.LinkLifecycleState
+import com.remindly.location.registry.PoiRegistry
 import com.remindly.media.AudioAlarmService
 import com.remindly.notify.ReminderNotifier
 import com.remindly.util.AppLogger
@@ -44,6 +47,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
     @Inject
     lateinit var contextEngine: ContextRelevanceEngine
+
+    @Inject
+    lateinit var poiRegistry: PoiRegistry
 
     override fun onReceive(context: Context, intent: Intent) {
         val geofencingEvent = GeofencingEvent.fromIntent(intent)
@@ -155,16 +161,30 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             continue
                         }
 
-                        // 2. Déclenchement d'un POI ou lieu fixe
-                        val reminderId = geofence.requestId.substringBefore("_").toLongOrNull() ?: continue
-                        if (!handledReminderIds.add(reminderId)) continue
+                        // 2. Déclenchement d'un POI (potentiellement multi-rappels) ou lieu fixe
+                        val poiId = prefs.getString("poi_id_${geofence.requestId}", null)
+                        val associatedLinks = if (poiId != null) poiRegistry.getLinksForPoi(poiId) else emptyList()
 
-                        val reminder = reminderRepository.getById(reminderId) ?: continue
-                        if (reminder.status != ReminderStatus.ACTIVE) {
-                            val suppressedMsg = "🚫 Alerte de lieu ignorée : le rappel #$reminderId n'est plus actif (status=${reminder.status}). Désarmement des géofences."
+                        val remindersToProcess = if (associatedLinks.isNotEmpty()) {
+                            associatedLinks.mapNotNull { link ->
+                                val rem = reminderRepository.getById(link.reminderId)
+                                if (rem != null && rem.status == ReminderStatus.ACTIVE) {
+                                    Pair(rem, link)
+                                } else null
+                            }
+                        } else {
+                            val reminderId = geofence.requestId.substringBefore("_").toLongOrNull()
+                            if (reminderId != null) {
+                                val rem = reminderRepository.getById(reminderId)
+                                if (rem != null && rem.status == ReminderStatus.ACTIVE) {
+                                    listOf(Pair(rem, null))
+                                } else emptyList()
+                            } else emptyList()
+                        }
+
+                        if (remindersToProcess.isEmpty()) {
+                            val suppressedMsg = "🚫 Alerte de lieu ignorée : aucun rappel actif rattaché à la géofence ${geofence.requestId}."
                             android.util.Log.i("GeofenceReceiver", suppressedMsg)
-                            appLogger.i("GEOFENCE_SUPPRESSED", suppressedMsg, reminderId)
-                            geofenceManager.removeGeofence(reminderId)
                             continue
                         }
 
@@ -180,50 +200,30 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
                         // 1c. Traitement spécifique de la transition SORTIE (EXIT) sur lieu fixe ou POI
                         if (geofenceTransition == Geofence.GEOFENCE_TRANSITION_EXIT) {
-                            val placeName = detectedPlaceName ?: reminder.placeLabel ?: "Lieu"
-                            val exitMsg = "🚗 Sortie de zone détectée pour '$placeName' (Rappel #$reminderId). Réarmement automatique pour le prochain passage."
-                            android.util.Log.i("GeofenceReceiver", exitMsg)
-                            appLogger.i("GEOFENCE_EXIT", exitMsg, reminderId)
+                            val placeName = detectedPlaceName ?: "Lieu"
+                            remindersToProcess.forEach { (reminder, link) ->
+                                link?.state = LinkLifecycleState.ARMED
+                                val exitMsg = "🚗 Sortie de zone détectée pour '$placeName' (Rappel #${reminder.id}). Réarmement automatique pour le prochain passage."
+                                android.util.Log.i("GeofenceReceiver", exitMsg)
+                                appLogger.i("GEOFENCE_EXIT", exitMsg, reminder.id)
 
-                            // Arrêter le suivi diagnostic 5s si actif pour ce rappel
-                            if (diagnosticTracker.isDiagnosticActiveFor(reminderId)) {
-                                diagnosticTracker.stopDiagnostic(context)
+                                if (diagnosticTracker.isDiagnosticActiveFor(reminder.id)) {
+                                    diagnosticTracker.stopDiagnostic(context)
+                                }
+                                geofenceManager.resetCooldown(reminder.id)
+                                if (reminder.status == ReminderStatus.ACTIVE) {
+                                    geofenceManager.rearmGeofence(reminder)
+                                }
                             }
-
-                            // Réinitialiser le cooldown anti-rebond pour permettre un redéclenchement immédiat au retour
-                            geofenceManager.resetCooldown(reminderId)
-
-                            // Si le rappel est toujours actif (non complété), réarmer le géofence auprès de GMS
-                            if (reminder.status == ReminderStatus.ACTIVE) {
-                                geofenceManager.rearmGeofence(reminder)
-                            }
-                            continue
-                        }
-
-                        // Option 1 : Garde-fou d'activation différée (ne sonne qu'à partir de l'heure choisie)
-                        if (reminder.placeActiveFromMillis != null && System.currentTimeMillis() < reminder.placeActiveFromMillis) {
-                            val suppressMsg = "🚫 Alerte de lieu ignorée : l'heure d'activation différée n'est pas encore atteinte (${reminder.placeActiveFromMillis}) pour rappel #${reminder.id}"
-                            android.util.Log.i("GeofenceReceiver", suppressMsg)
-                            appLogger.i("GEOFENCE_SUPPRESSED", suppressMsg, reminderId)
                             continue
                         }
 
                         val placeLat = prefs.getFloat("place_lat_${geofence.requestId}", Float.NaN)
                         val placeLng = prefs.getFloat("place_lng_${geofence.requestId}", Float.NaN)
-                        val targetLat = if (!placeLat.isNaN()) placeLat.toDouble() else reminder.placeLat
-                        val targetLng = if (!placeLng.isNaN()) placeLng.toDouble() else reminder.placeLng
+                        val targetLat = if (!placeLat.isNaN()) placeLat.toDouble() else remindersToProcess.first().first.placeLat
+                        val targetLng = if (!placeLng.isNaN()) placeLng.toDouble() else remindersToProcess.first().first.placeLng
 
-                        val settings = settingsRepository.getSettings()
-                        val targetRadiusM = reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
-
-                        val isFixedPlace = reminder.placeCategory == null
-                        if (isFixedPlace) {
-                            appLogger.i("GEOFENCE_FILTER_BYPASS", "Filtre intelligent contourné pour lieu fixe '${reminder.placeLabel}'", reminderId)
-                        }
-
-                        var distInfo = ""
                         var distanceMeters: Float? = null
-
                         val locForDistance = geofencingEvent.triggeringLocation ?: try {
                             val fusedClient = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
                             com.google.android.gms.tasks.Tasks.await(
@@ -243,42 +243,74 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 results
                             )
                             distanceMeters = results[0]
-                            distInfo = " | Dist: ${results[0].toInt()}m (±${locForDistance.accuracy.toInt()}m)"
                         }
 
-                        // Évaluation par le Moteur de Pertinence Contextuelle (Score de 0 à 100)
-                        val evaluation = contextEngine.evaluate(
-                            reminder = reminder,
-                            currentLocation = locForDistance,
-                            targetLat = targetLat,
-                            targetLng = targetLng,
-                            currentDistanceM = distanceMeters
-                        )
+                        val settings = settingsRepository.getSettings()
+                        val validatedReminders = mutableListOf<Pair<Reminder, ContextEvaluation>>()
 
-                        if (evaluation.decision == ContextDecision.SUPPRESS) {
-                            val filterMsg = "🚫 Alerte filtrée (${evaluation.reason}) pour '${detectedPlaceName ?: reminder.placeLabel ?: "Commerce"}'"
-                            android.util.Log.w("GeofenceReceiver", filterMsg)
-                            appLogger.i("GEOFENCE_FILTERED", filterMsg, reminderId)
+                        for ((reminder, link) in remindersToProcess) {
+                            if (!handledReminderIds.add(reminder.id)) continue
+
+                            // Garde-fou d'activation différée
+                            if (reminder.placeActiveFromMillis != null && System.currentTimeMillis() < reminder.placeActiveFromMillis) {
+                                val suppressMsg = "🚫 Alerte de lieu ignorée : heure différée (${reminder.placeActiveFromMillis}) non atteinte pour rappel #${reminder.id}"
+                                android.util.Log.i("GeofenceReceiver", suppressMsg)
+                                appLogger.i("GEOFENCE_SUPPRESSED", suppressMsg, reminder.id)
+                                continue
+                            }
+
+                            // SÉPARATION SÉMANTIQUE vs RÉVEIL MATÉRIEL (WAIT)
+                            // Si la géofence matérielle a réveillé le téléphone (ex: 280m), mais que le rappel exige 150m
+                            if (link != null && distanceMeters != null && distanceMeters > link.semanticRadiusM) {
+                                link.state = LinkLifecycleState.WAITING
+                                link.retryDistanceM = link.semanticRadiusM
+                                val waitMsg = "⏳ Réveil matériel à ${distanceMeters.toInt()}m. En attente du rayon sémantique (${link.semanticRadiusM.toInt()}m) pour '${reminder.text}'"
+                                android.util.Log.d("GeofenceReceiver", waitMsg)
+                                appLogger.i("GEOFENCE_WAITING", waitMsg, reminder.id)
+                                continue
+                            }
+
+                            val evaluation = contextEngine.evaluate(
+                                reminder = reminder,
+                                currentLocation = locForDistance,
+                                targetLat = targetLat,
+                                targetLng = targetLng,
+                                currentDistanceM = distanceMeters
+                            )
+
+                            if (evaluation.decision == ContextDecision.SUPPRESS) {
+                                link?.state = LinkLifecycleState.SUPPRESSED_NOW
+                                val filterMsg = "🚫 Alerte filtrée (${evaluation.reason}) pour '${detectedPlaceName ?: reminder.placeLabel ?: "Commerce"}'"
+                                android.util.Log.w("GeofenceReceiver", filterMsg)
+                                appLogger.i("GEOFENCE_FILTERED", filterMsg, reminder.id)
+                                continue
+                            }
+
+                            link?.state = LinkLifecycleState.CONTEXT_VALIDATED
+                            validatedReminders.add(Pair(reminder, evaluation))
+                        }
+
+                        if (validatedReminders.isEmpty()) {
                             continue
                         }
 
-                        appLogger.i("CONTEXT_SCORE", "Score: ${evaluation.score}pts [${evaluation.decision}] | ${evaluation.factors.joinToString { "${it.description} (${it.points}p)" }}", reminderId)
+                        // DÉCLENCHEMENT DE L'ALERTE : UNICITAIRE OU GROUPÉ (UX ChatGPT)
+                        val now = System.currentTimeMillis()
+                        val cooldownMs = settings.geofenceCooldownSeconds * 1000L
 
-                        val triggerMsg = "Transition $transitionName sur '${detectedPlaceName ?: reminder.placeLabel ?: "Lieu inconnu"}'$distInfo (Score: ${evaluation.score}pts)"
-                        android.util.Log.i("GeofenceReceiver", "DÉCLENCHEMENT DU RAPPEL $reminderId: '${reminder.text}' - $triggerMsg")
-                        appLogger.success("GEOFENCE_TRIGGERED", triggerMsg, reminderId)
-                        
-                        if (reminder.status == ReminderStatus.ACTIVE) {
-                            val audioAttachment = reminder.attachments
-                                .firstOrNull { it.type == AttachmentType.AUDIO }
-                            val now = System.currentTimeMillis()
-                            val lastTrigger = prefs.getLong("last_trigger_time_${reminderId}", 0L)
-                            val cooldownMs = settings.geofenceCooldownSeconds * 1000L
+                        if (validatedReminders.size == 1) {
+                            val (reminder, evaluation) = validatedReminders.first()
+                            val distInfo = if (distanceMeters != null) " | Dist: ${distanceMeters.toInt()}m" else ""
+                            val triggerMsg = "Transition $transitionName sur '${detectedPlaceName ?: reminder.placeLabel ?: "Lieu"}'$distInfo (Score: ${evaluation.score}pts)"
+                            android.util.Log.i("GeofenceReceiver", "DÉCLENCHEMENT DU RAPPEL ${reminder.id}: '${reminder.text}' - $triggerMsg")
+                            appLogger.success("GEOFENCE_TRIGGERED", triggerMsg, reminder.id)
+
+                            val audioAttachment = reminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
+                            val lastTrigger = prefs.getLong("last_trigger_time_${reminder.id}", 0L)
                             val isCooldown = (now - lastTrigger) < cooldownMs
 
                             if (!isCooldown) {
-                                prefs.edit().putLong("last_trigger_time_${reminderId}", now).apply()
-                                
+                                prefs.edit().putLong("last_trigger_time_${reminder.id}", now).apply()
                                 val notifier = ReminderNotifier(context)
                                 notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName, distanceMeters = distanceMeters)
 
@@ -296,20 +328,45 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                             placeName = detectedPlaceName ?: reminder.placeLabel,
                                             distanceMeters = distanceMeters
                                         )
-                                        appLogger.success("NOTIFICATION_FIRED", "Alarme vocale/TTS lancée", reminderId)
+                                        appLogger.success("NOTIFICATION_FIRED", "Alarme vocale/TTS lancée", reminder.id)
                                     } catch (e: Exception) {
                                         android.util.Log.e("GeofenceReceiver", "Impossible de démarrer AudioAlarmService: ${e.message}")
-                                        appLogger.w("NOTIFICATION_FIRED", "Repli sur notification standard : ${e.message}", reminderId)
                                     }
-                                } else {
-                                    appLogger.success("NOTIFICATION_FIRED", "Notification affichée pour '${reminder.text}' (Mode discret/évaluation)", reminderId)
                                 }
-                            } else {
-                                val notifier = ReminderNotifier(context)
-                                notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName, distanceMeters = distanceMeters)
-                                appLogger.i("NOTIFICATION_FIRED", "Notification mise à jour pour '${detectedPlaceName ?: reminder.placeLabel}' (Cooldown de ${settings.geofenceCooldownSeconds}s actif)", reminderId)
+                            }
+                        } else {
+                            // ANNONCE GROUPÉE INTELLIGENTE : Plusieurs rappels sur le même POI physique
+                            val placeLabel = detectedPlaceName ?: "ce commerce"
+                            val itemsSummary = validatedReminders.joinToString(", ") { it.first.text ?: "Rappel" }
+                            val groupedText = "Vous avez ${validatedReminders.size} rappels à proximité de $placeLabel : $itemsSummary"
+
+                            val notifier = ReminderNotifier(context)
+
+                            validatedReminders.forEach { (reminder, _) ->
+                                val lastTrigger = prefs.getLong("last_trigger_time_${reminder.id}", 0L)
+                                val isCooldown = (now - lastTrigger) < cooldownMs
+                                if (!isCooldown) {
+                                    prefs.edit().putLong("last_trigger_time_${reminder.id}", now).apply()
+                                    notifier.showPlaceReminder(reminder, detectedPlaceName = placeLabel, distanceMeters = distanceMeters)
+                                }
                             }
 
+                            try {
+                                AudioAlarmService.start(
+                                    context = context,
+                                    reminderText = groupedText,
+                                    reminderId = validatedReminders.first().first.id,
+                                    placeName = placeLabel,
+                                    distanceMeters = distanceMeters
+                                )
+                                appLogger.success("GROUPED_NOTIFICATION_FIRED", groupedText)
+                            } catch (e: Exception) {
+                                android.util.Log.e("GeofenceReceiver", "Erreur AudioAlarmService groupé: ${e.message}")
+                            }
+                        }
+
+                        // Post-traitement pour chaque rappel validé (persistance, annulation mutuelle, habitude/fin)
+                        for ((reminder, _) in validatedReminders) {
                             val updatedReminder = reminder.copy(
                                 placeLabel = detectedPlaceName ?: reminder.placeLabel,
                                 placeLat = targetLat,
@@ -318,34 +375,30 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             )
                             reminderRepository.save(updatedReminder)
 
-                            // Démarrage automatique du suivi live 5s dans la zone (avec arrêt automatique à la sortie) si répétitif
-                            if (reminder.isRepeating && targetLat != null && targetLng != null) {
-                                diagnosticTracker.startLiveZoneTracking(context, updatedReminder)
-                            }
-
                             // Option 2 (Mutual Cancellation) : Le lieu s'étant déclenché, annuler l'alarme d'échéance programmée
                             if (reminder.triggerType == com.remindly.domain.model.TriggerType.BOTH || reminder.triggerTimeMillis != null) {
-                                alarmScheduler.cancel(reminderId)
-                                val cancelMsg = "Arrivée au lieu validée : alarme d'échéance annulée pour rappel #$reminderId"
+                                alarmScheduler.cancel(reminder.id)
+                                val cancelMsg = "Arrivée au lieu validée : alarme d'échéance annulée pour rappel #${reminder.id}"
                                 android.util.Log.i("GeofenceReceiver", cancelMsg)
-                                appLogger.i("MUTUAL_CANCELLATION", cancelMsg, reminderId)
+                                appLogger.i("MUTUAL_CANCELLATION", cancelMsg, reminder.id)
                             }
 
                             if (reminder.isRepeating) {
                                 // Mode HABITUDE / RÉPÉTITIF :
-                                // On maintient le geofence armé pour les prochains passages.
+                                if (targetLat != null && targetLng != null) {
+                                    diagnosticTracker.startLiveZoneTracking(context, updatedReminder)
+                                }
                                 appLogger.i(
                                     "HABIT_KEPT_ACTIVE",
                                     "Rappel récurrent/habitude #${reminder.id} maintenu ACTIF pour les prochains passages.",
-                                    reminderId
+                                    reminder.id
                                 )
                             } else {
                                 // Mode STANDARD (non répétitif) :
-                                // Désarmer complètement toutes les zones (POIs catégorie, zone tampon et lieu fixe)
                                 val completeMsg = "Rappel non répétitif #${reminder.id} ('${reminder.text ?: "Lieu"}') validé et marqué TERMINÉ. Désarmement total de toutes les zones."
                                 android.util.Log.i("GeofenceReceiver", completeMsg)
-                                appLogger.i("REMINDER_COMPLETED", completeMsg, reminderId)
-                                geofenceManager.removeGeofence(reminderId)
+                                appLogger.i("REMINDER_COMPLETED", completeMsg, reminder.id)
+                                geofenceManager.removeGeofence(reminder.id)
                             }
                         }
                     }

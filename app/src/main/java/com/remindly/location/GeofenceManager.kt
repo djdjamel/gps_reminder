@@ -19,11 +19,22 @@ import com.remindly.domain.model.CategoryReferenceType
 import com.remindly.domain.model.CommuteDirection
 import com.remindly.domain.model.PlaceCategory
 import com.remindly.domain.model.Reminder
+import com.remindly.location.registry.DiscoveredPoi
+import com.remindly.location.registry.LinkLifecycleState
+import com.remindly.location.registry.PoiProvider
+import com.remindly.location.registry.PoiRegistry
+import com.remindly.location.registry.ReminderPoiLink
+import com.remindly.location.registry.TrackedGeofence
+import com.remindly.location.scheduler.ContextualGeofenceScheduler
+import com.remindly.location.scheduler.DiffOperation
+import com.remindly.location.scheduler.GeofenceDiffEngine
+import com.remindly.location.scheduler.GeofenceStateSnapshot
 import com.remindly.util.AppLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
@@ -37,13 +48,17 @@ class GeofenceManager @Inject constructor(
     private val directionsService: DirectionsService,
     private val settingsRepository: VoiceAlarmSettingsRepository,
     private val appLogger: AppLogger,
-    private val reminderRepositoryProvider: Provider<com.remindly.data.repo.ReminderRepository>
+    private val reminderRepositoryProvider: Provider<com.remindly.data.repo.ReminderRepository>,
+    private val poiRegistry: PoiRegistry,
+    private val scheduler: ContextualGeofenceScheduler,
+    private val diffEngine: GeofenceDiffEngine
 ) {
     private val tag = "GeofenceManager"
     private val geofencingClient: GeofencingClient = LocationServices.getGeofencingClient(context)
     private val fusedLocationClient: FusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val prefs = context.getSharedPreferences("geofence_tracking", Context.MODE_PRIVATE)
+    private var actualState = GeofenceStateSnapshot()
 
     private val geofencePendingIntent: PendingIntent by lazy {
         val intent = Intent(context, GeofenceBroadcastReceiver::class.java).apply {
@@ -223,37 +238,50 @@ class GeofenceManager @Inject constructor(
 
                 if (places.isNotEmpty()) {
                     val editor = prefs.edit()
+                    val allTrackedIds = mutableSetOf<String>()
+
                     places.forEachIndexed { index, place ->
                         val distFormatted = if (place.distanceMeters > 0f) "${place.distanceMeters.toInt()}m" else "Inconnue"
                         val poiDetailMsg = "#${index + 1} ${place.name} | Dist: $distFormatted | Pos: (${place.latitude}, ${place.longitude})"
                         Log.d(tag, "-> POI: $poiDetailMsg")
                         appLogger.i("POI_DETAIL", poiDetailMsg, reminder.id)
-                    }
 
-                    val poiGeofences = places.mapIndexed { index, place ->
-                        val reqId = "${reminder.id}_geo_${index}"
+                        // 1. Détermination du fournisseur (Google vs OSM)
+                        val provider = if (place.placeId.startsWith("osm_")) PoiProvider.OPEN_STREET_MAP else PoiProvider.GOOGLE_PLACES
+
+                        // 2. Enregistrement dédupliqué dans le PoiRegistry
+                        val poi = poiRegistry.registerOrGetPoi(
+                            provider = provider,
+                            providerId = place.placeId,
+                            name = place.name,
+                            latitude = place.latitude,
+                            longitude = place.longitude,
+                            category = reminder.placeCategory
+                        )
+
+                        // 3. Liaison sémantique Reminder <-> POI
+                        val link = poiRegistry.linkReminderToPoi(
+                            reminderId = reminder.id,
+                            poiId = poi.id,
+                            semanticRadiusM = detectionRadiusM
+                        )
+
+                        // 4. Calcul du contextScore initial
+                        val initialScore = if (place.distanceMeters > 0f) {
+                            (100 - (place.distanceMeters / 25f).toInt()).coerceIn(20, 95)
+                        } else {
+                            70
+                        }
+                        link.contextScore = initialScore
+
+                        // Clé canonique pour la compatibilité prefs et DrivingPulseService
+                        val reqId = "geo_${poi.id.replace(":", "_").replace("/", "_")}"
+                        allTrackedIds.add(reqId)
                         editor.putString("place_name_${reqId}", place.name)
                         editor.putFloat("place_lat_${reqId}", place.latitude.toFloat())
                         editor.putFloat("place_lng_${reqId}", place.longitude.toFloat())
-                        Geofence.Builder()
-                            .setRequestId(reqId)
-                            .setCircularRegion(
-                                place.latitude,
-                                place.longitude,
-                                detectionRadiusM
-                            )
-                            .setExpirationDuration(Geofence.NEVER_EXPIRE)
-                            .setTransitionTypes(
-                                Geofence.GEOFENCE_TRANSITION_ENTER or 
-                                Geofence.GEOFENCE_TRANSITION_DWELL or 
-                                Geofence.GEOFENCE_TRANSITION_EXIT
-                            )
-                            .setLoiteringDelay(8000)
-                            .setNotificationResponsiveness(1000)
-                            .build()
+                        editor.putString("poi_id_${reqId}", poi.id)
                     }
-
-                    val allTrackedIds = poiGeofences.map { it.requestId }.toMutableSet()
 
                     // Armement de la Fenêtre Glissante (Rolling Exit Geofence) si recherche autour de position
                     if (searchCenterLat != null && searchCenterLng != null && reminder.categoryRefType != CategoryReferenceType.COMMUTE_ROUTE.id) {
@@ -273,7 +301,6 @@ class GeofenceManager @Inject constructor(
                             .setNotificationResponsiveness(5000)
                             .build()
 
-                        // Requête dédiée pour l'exit zone avec initialTrigger = 0 pour éviter tout faux déclenchement initial
                         val exitRequest = GeofencingRequest.Builder()
                             .setInitialTrigger(0)
                             .addGeofence(exitGeofence)
@@ -288,26 +315,22 @@ class GeofenceManager @Inject constructor(
                             .addOnFailureListener { e ->
                                 Log.e(tag, "ÉCHEC armement exit_zone: ${e.message}", e)
                             }
+
+                        val exitTracked = TrackedGeofence(
+                            requestId = exitReqId,
+                            poiId = exitReqId,
+                            latitude = searchCenterLat,
+                            longitude = searchCenterLng,
+                            radiusMeters = exitRadiusM,
+                            isExitZone = true
+                        )
+                        actualState = diffEngine.reconcileActualState(actualState, listOf(exitTracked), emptyList())
                     }
 
                     editor.putStringSet("geofences_${reminder.id}", allTrackedIds).apply()
 
-                    val poiRequest = GeofencingRequest.Builder()
-                        .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER or GeofencingRequest.INITIAL_TRIGGER_DWELL)
-                        .addGeofences(poiGeofences)
-                        .build()
-
-                    geofencingClient.addGeofences(poiRequest, geofencePendingIntent)
-                        .addOnSuccessListener {
-                            val successMsg = "${places.size} géofences de POI armées (Rayon: ${detectionRadiusM.toInt()}m, DWELL: 8s, Resp: 3s)"
-                            Log.i(tag, "SUCCÈS: $successMsg")
-                            appLogger.success("GEOFENCE_REGISTERED", successMsg, reminder.id)
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e(tag, "ÉCHEC enregistrement géofences: ${e.message}", e)
-                            appLogger.e("GEOFENCE_ERROR", "Échec Play Services addGeofences: ${e.message}", e, reminder.id)
-                            handleGeofenceError(e, "Enregistrement des POIs pour rappel ${reminder.id}")
-                        }
+                    // Synchronisation ordonnancée respectant le Hard Cap 85 via DiffEngine
+                    synchronizeGeofences()
                 } else {
                     val noPoiMsg = "Aucun POI trouvé pour la catégorie ${category.displayName} dans la zone immédiate"
                     Log.w(tag, "ATTENTION: $noPoiMsg")
@@ -457,6 +480,10 @@ class GeofenceManager @Inject constructor(
         editor.remove("geofences_$reminderId")
         editor.remove("last_trigger_time_$reminderId").apply()
 
+        // Marquer les liens comme COMPLETED dans poiRegistry
+        val links = poiRegistry.getLinksForReminder(reminderId)
+        links.forEach { it.state = LinkLifecycleState.COMPLETED }
+
         geofencingClient.removeGeofences(idsToRemove)
             .addOnSuccessListener {
                 Log.d(tag, "Géofences du rappel $reminderId supprimées (${idsToRemove.size} IDs)")
@@ -465,6 +492,99 @@ class GeofenceManager @Inject constructor(
             .addOnFailureListener { e ->
                 Log.w(tag, "Erreur suppression géofences $reminderId: ${e.message}")
             }
+
+        scope.launch {
+            synchronizeGeofences()
+        }
+    }
+
+    /**
+     * Synchronise l'ensemble des géofences matérielles actives auprès de Google Play Services
+     * en utilisant le ContextualGeofenceScheduler (Hard Cap 85) et le GeofenceDiffEngine
+     * (rotation avec recouvrement sans jamais dépasser 100).
+     */
+    suspend fun synchronizeGeofences() {
+        try {
+            val reminderRepo = reminderRepositoryProvider.get()
+            val activeReminders = try {
+                reminderRepo.observePersonalActive().first()
+            } catch (e: Exception) {
+                emptyList()
+            }
+
+            val linksMap = mutableMapOf<Long, List<ReminderPoiLink>>()
+            for (rem in activeReminders) {
+                linksMap[rem.id] = poiRegistry.getLinksForReminder(rem.id)
+            }
+
+            val schedulerResult = scheduler.schedule(activeReminders, linksMap)
+
+            val desiredMap = mutableMapOf<String, TrackedGeofence>()
+            for (poiId in schedulerResult.allocatedPoiIds) {
+                val reqId = "geo_${poiId.replace(":", "_").replace("/", "_")}"
+                val tracked = poiRegistry.allocateGeofenceForPoi(poiId, reqId)
+                desiredMap[reqId] = tracked
+            }
+
+            // Conserver les zones de sortie actives (exit_zones) dans desiredMap
+            val activeExitZones = actualState.geofences.filterKeys { it.endsWith("_exit_zone") }
+            desiredMap.putAll(activeExitZones)
+
+            val desiredState = GeofenceStateSnapshot(desiredMap)
+            val plan = diffEngine.computeTransitionPlan(actualState, desiredState)
+
+            if (!plan.isValid) {
+                Log.e(tag, "synchronizeGeofences: plan invalide (${plan.failureReason})")
+                appLogger.e("GEOFENCE_DIFF_ERROR", "Plan de transition invalide: ${plan.failureReason}")
+                return
+            }
+
+            for (op in plan.operations) {
+                when (op) {
+                    is DiffOperation.AddBatch -> {
+                        val gmsList = op.geofencesToAdd.map { tracked ->
+                            Geofence.Builder()
+                                .setRequestId(tracked.requestId)
+                                .setCircularRegion(tracked.latitude, tracked.longitude, tracked.radiusMeters)
+                                .setExpirationDuration(Geofence.NEVER_EXPIRE)
+                                .setTransitionTypes(
+                                    Geofence.GEOFENCE_TRANSITION_ENTER or
+                                    Geofence.GEOFENCE_TRANSITION_DWELL or
+                                    Geofence.GEOFENCE_TRANSITION_EXIT
+                                )
+                                .setLoiteringDelay(8000)
+                                .setNotificationResponsiveness(1000)
+                                .build()
+                        }
+                        val request = GeofencingRequest.Builder()
+                            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER or GeofencingRequest.INITIAL_TRIGGER_DWELL)
+                            .addGeofences(gmsList)
+                            .build()
+
+                        try {
+                            geofencingClient.addGeofences(request, geofencePendingIntent).await()
+                            actualState = diffEngine.reconcileActualState(actualState, op.geofencesToAdd, emptyList())
+                            Log.i(tag, "DiffEngine AddBatch: +${op.geofencesToAdd.size} géofences (Total actuel: ${actualState.count}/100)")
+                        } catch (e: Exception) {
+                            Log.e(tag, "Échec AddBatch: ${e.message}", e)
+                        }
+                    }
+                    is DiffOperation.RemoveBatch -> {
+                        try {
+                            geofencingClient.removeGeofences(op.requestIdsToRemove).await()
+                            actualState = diffEngine.reconcileActualState(actualState, emptyList(), op.requestIdsToRemove)
+                            Log.i(tag, "DiffEngine RemoveBatch: -${op.requestIdsToRemove.size} géofences (Total actuel: ${actualState.count}/100)")
+                        } catch (e: Exception) {
+                            Log.e(tag, "Échec RemoveBatch: ${e.message}", e)
+                        }
+                    }
+                }
+            }
+
+            appLogger.success("GEOFENCE_SYNCHRONIZED", "${actualState.count} géofences matérielles actives (Ordonnancement respecté, réserve disponible: ${100 - actualState.count})")
+        } catch (e: Exception) {
+            Log.e(tag, "Erreur dans synchronizeGeofences: ${e.message}", e)
+        }
     }
 
     fun resetCooldown(reminderId: Long) {
