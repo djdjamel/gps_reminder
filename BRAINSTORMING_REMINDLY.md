@@ -215,7 +215,11 @@ Pour canaliser l'énergie de l'équipe et éviter le piège de la dispersion ("v
 ---
 
 ### 🛡️ Phase 1 : Fiabilité Absolue du Noyau (Priorité Immédiate)
-* **Geofence Budget Manager** : Empêcher tout débordement des 100 géofences avec répartition dynamique et priorisation spatiale.
+* **Geofence Budget Manager** : ✅ **Terminé & Déployé (Septembre 2026)**.
+  - *PoiRegistry* : Unicité matérielle stricte (1 DiscoveredPoi = max 1 TrackedGeofence, multi-liens N:1, déduplication Google + OSM).
+  - *ContextualGeofenceScheduler* : Ordonnancement en 2 étages (Fairness Floor proportionnel anti-famine + Competitive Pool au mérite avec tri par priorité de rappel) et Hard Cap garanti à 85 slots.
+  - *GeofenceDiffEngine* : Gestion transactionnelle des transitions matérielles par batchs de 15 avec recouvrement doux (Add avant Remove via la marge de réserve non allouée de 15 slots) pour un total matériel ≤ 100 à chaque instant.
+  - *UX Intelligente* : Découplage rayon matériel (réveil) vs rayon sémantique (décision WAITING) et annonce vocale / notification groupée sur POI partagé.
 * **Cache Local Room pour les POIs** : Réduire la dépendance réseau envers Overpass et accélérer l'affichage instantané.
 * **Calibrage fin via les logs réels** : Ajustement des seuils de scoring (70 / 45) à partir des tests en conditions réelles de conduite et de marche.
 
