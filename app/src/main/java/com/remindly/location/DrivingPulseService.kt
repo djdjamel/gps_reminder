@@ -58,6 +58,9 @@ class DrivingPulseService : Service() {
     @Inject
     lateinit var geofenceManager: GeofenceManager
 
+    @Inject
+    lateinit var triggerCoordinator: TriggerCoordinator
+
     private val lastDistanceByReminder = mutableMapOf<String, DistanceSample>()
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -378,9 +381,19 @@ class DrivingPulseService : Service() {
         }
         val prefs = getSharedPreferences("geofence_tracking", Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
-        val lastTrigger = prefs.getLong("last_trigger_time_${reminderId}", 0L)
         val cooldownMs = settings.geofenceCooldownSeconds * 1000L
-        val isCooldown = (now - lastTrigger) < cooldownMs
+
+        // Double verrouillage atomique thread-safe : TriggerCoordinator + SharedPreferences
+        val acquiredInCoordinator = triggerCoordinator.tryAcquireTrigger(reminderId, cooldownMs)
+        val lastTrigger = prefs.getLong("last_trigger_time_${reminderId}", 0L)
+        val isCooldown = !acquiredInCoordinator || ((now - lastTrigger) < cooldownMs)
+
+        if (isCooldown) {
+            Log.i(TAG, "Déclenchement Pulse Conduite ignoré pour #$reminderId : cooldown actif ou déclenchement concurrent.")
+            return
+        }
+
+        prefs.edit().putLong("last_trigger_time_${reminderId}", now).apply()
 
         val placeName = poiName ?: reminder.placeLabel ?: reminder.text ?: "Lieu"
         val triggerMsg = "🎯 [PULSE_TRIGGERED] Déclenchement autonome par Pulse Conduite pour '$placeName' à ${distanceMeters.toInt()}m (Score: ${evaluation.score}pts - ${evaluation.decision})"
@@ -388,18 +401,15 @@ class DrivingPulseService : Service() {
         appLogger.i("CONTEXT_SCORE", "Score: ${evaluation.score}pts [${evaluation.decision}] | ${evaluation.factors.joinToString { "${it.description} (${it.points}p)" }}", reminderId)
 
         val notifier = ReminderNotifier(this@DrivingPulseService)
+        appLogger.success("GEOFENCE_TRIGGERED", triggerMsg, reminderId)
 
-        if (!isCooldown) {
-            prefs.edit().putLong("last_trigger_time_${reminderId}", now).apply()
-            appLogger.success("GEOFENCE_TRIGGERED", triggerMsg, reminderId)
+        notifier.showPlaceReminder(
+            reminder = reminder,
+            detectedPlaceName = placeName,
+            distanceMeters = distanceMeters
+        )
 
-            notifier.showPlaceReminder(
-                reminder = reminder,
-                detectedPlaceName = placeName,
-                distanceMeters = distanceMeters
-            )
-
-            val audioAttachment = reminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
+        val audioAttachment = reminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
             val shouldStartAudioService = (evaluation.decision == ContextDecision.FULL_ALARM ||
                 (evaluation.decision == ContextDecision.DISCREET_NOTIF && evaluation.score >= 45)) &&
                 ((audioAttachment != null) || ((settings.readTextRemindersAloud || settings.announcePlaceByVoice) && !reminder.text.isNullOrBlank()))
@@ -447,14 +457,6 @@ class DrivingPulseService : Service() {
                 }
                 geofenceManager.removeGeofence(reminderId)
             }
-        } else {
-            notifier.showPlaceReminder(
-                reminder = reminder,
-                detectedPlaceName = placeName,
-                distanceMeters = distanceMeters
-            )
-            appLogger.i("NOTIFICATION_FIRED", "Notification rafraîchie pour '$placeName' (Pulse Conduite - Cooldown de ${settings.geofenceCooldownSeconds}s actif)", reminderId)
-        }
 
         if (reminder.isRepeating) {
             val targetReminder = if (poiLat != null && poiLng != null) {

@@ -31,11 +31,12 @@ class DiagnosticLocationTracker @Inject constructor() {
     val state: StateFlow<DiagnosticState> = _state.asStateFlow()
 
     fun startDiagnostic(context: Context, reminder: Reminder) {
+        if (reminder.status != com.remindly.domain.model.ReminderStatus.ACTIVE) return
         startTrackingInternal(context, reminder, autoStopOnExit = false)
     }
 
     fun startLiveZoneTracking(context: Context, reminder: Reminder) {
-        if (reminder.status == com.remindly.domain.model.ReminderStatus.COMPLETED) return
+        if (reminder.status != com.remindly.domain.model.ReminderStatus.ACTIVE) return
         val current = _state.value
         // Si le suivi est déjà actif pour ce rappel, on n'écrase pas
         if (current.isRunning && current.reminderId == reminder.id) return

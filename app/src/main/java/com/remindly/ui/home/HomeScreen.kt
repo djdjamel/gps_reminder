@@ -494,8 +494,8 @@ fun ReminderItem(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // Toggle Surveillance Intensive / Diagnostic GPS (Visible pour tous les rappels avec lieu précis)
-                    if (reminder.placeLat != null && reminder.placeLng != null) {
+                    // Toggle Surveillance Intensive / Diagnostic GPS (Visible uniquement pour les rappels actifs avec lieu précis)
+                    if (!isCompleted && reminder.placeLat != null && reminder.placeLng != null) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = if (isDiagnosticActive) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),

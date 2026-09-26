@@ -51,7 +51,8 @@ class GeofenceManager @Inject constructor(
     private val reminderRepositoryProvider: Provider<com.remindly.data.repo.ReminderRepository>,
     private val poiRegistry: PoiRegistry,
     private val scheduler: ContextualGeofenceScheduler,
-    private val diffEngine: GeofenceDiffEngine
+    private val diffEngine: GeofenceDiffEngine,
+    private val triggerCoordinator: TriggerCoordinator
 ) {
     private val tag = "GeofenceManager"
     private val geofencingClient: GeofencingClient = LocationServices.getGeofencingClient(context)
@@ -477,8 +478,7 @@ class GeofenceManager @Inject constructor(
         editor.remove("exit_center_lat_$reminderId")
         editor.remove("exit_center_lng_$reminderId")
         editor.remove("exit_radius_$reminderId")
-        editor.remove("geofences_$reminderId")
-        editor.remove("last_trigger_time_$reminderId").apply()
+        editor.remove("geofences_$reminderId").apply()
 
         // Marquer les liens comme COMPLETED dans poiRegistry
         val links = poiRegistry.getLinksForReminder(reminderId)
@@ -588,6 +588,7 @@ class GeofenceManager @Inject constructor(
     }
 
     fun resetCooldown(reminderId: Long) {
+        triggerCoordinator.resetCooldown(reminderId)
         prefs.edit().remove("last_trigger_time_$reminderId").apply()
     }
 

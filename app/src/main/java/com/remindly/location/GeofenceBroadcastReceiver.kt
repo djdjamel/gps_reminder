@@ -51,6 +51,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     @Inject
     lateinit var poiRegistry: PoiRegistry
 
+    @Inject
+    lateinit var triggerCoordinator: TriggerCoordinator
+
     override fun onReceive(context: Context, intent: Intent) {
         val geofencingEvent = GeofencingEvent.fromIntent(intent)
         if (geofencingEvent == null) {
@@ -305,15 +308,23 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             android.util.Log.i("GeofenceReceiver", "DÉCLENCHEMENT DU RAPPEL ${reminder.id}: '${reminder.text}' - $triggerMsg")
                             appLogger.success("GEOFENCE_TRIGGERED", triggerMsg, reminder.id)
 
-                            val audioAttachment = reminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
+                            val freshReminder = reminderRepository.getById(reminder.id)
+                            if (freshReminder == null || freshReminder.status != ReminderStatus.ACTIVE) {
+                                val suppressedMsg = "🚫 Alerte de lieu ignorée : rappel #${reminder.id} déjà terminé ou inactif."
+                                android.util.Log.i("GeofenceReceiver", suppressedMsg)
+                                continue
+                            }
+
+                            val acquiredInCoordinator = triggerCoordinator.tryAcquireTrigger(reminder.id, cooldownMs)
                             val lastTrigger = prefs.getLong("last_trigger_time_${reminder.id}", 0L)
-                            val isCooldown = (now - lastTrigger) < cooldownMs
+                            val isCooldown = !acquiredInCoordinator || ((now - lastTrigger) < cooldownMs)
 
                             if (!isCooldown) {
                                 prefs.edit().putLong("last_trigger_time_${reminder.id}", now).apply()
                                 val notifier = ReminderNotifier(context)
                                 notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName, distanceMeters = distanceMeters)
 
+                                val audioAttachment = freshReminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
                                 val shouldStartAudioService = (evaluation.decision == ContextDecision.FULL_ALARM ||
                                     (evaluation.decision == ContextDecision.DISCREET_NOTIF && evaluation.score >= 45)) &&
                                     ((audioAttachment != null) || ((settings.readTextRemindersAloud || settings.announcePlaceByVoice) && !reminder.text.isNullOrBlank()))
@@ -343,11 +354,15 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             val notifier = ReminderNotifier(context)
 
                             validatedReminders.forEach { (reminder, _) ->
-                                val lastTrigger = prefs.getLong("last_trigger_time_${reminder.id}", 0L)
-                                val isCooldown = (now - lastTrigger) < cooldownMs
-                                if (!isCooldown) {
-                                    prefs.edit().putLong("last_trigger_time_${reminder.id}", now).apply()
-                                    notifier.showPlaceReminder(reminder, detectedPlaceName = placeLabel, distanceMeters = distanceMeters)
+                                val freshReminder = reminderRepository.getById(reminder.id)
+                                if (freshReminder != null && freshReminder.status == ReminderStatus.ACTIVE) {
+                                    val acquiredInCoordinator = triggerCoordinator.tryAcquireTrigger(reminder.id, cooldownMs)
+                                    val lastTrigger = prefs.getLong("last_trigger_time_${reminder.id}", 0L)
+                                    val isCooldown = !acquiredInCoordinator || ((now - lastTrigger) < cooldownMs)
+                                    if (!isCooldown) {
+                                        prefs.edit().putLong("last_trigger_time_${reminder.id}", now).apply()
+                                        notifier.showPlaceReminder(reminder, detectedPlaceName = placeLabel, distanceMeters = distanceMeters)
+                                    }
                                 }
                             }
 

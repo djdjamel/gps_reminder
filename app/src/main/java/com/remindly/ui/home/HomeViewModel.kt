@@ -19,6 +19,7 @@ import com.remindly.domain.model.TriggerType
 import com.remindly.location.DiagnosticLocationTracker
 import com.remindly.location.DiagnosticState
 import com.remindly.location.GeofenceManager
+import com.remindly.location.TriggerCoordinator
 import com.remindly.time.AlarmScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -53,6 +54,7 @@ class HomeViewModel @Inject constructor(
     private val authManager: AuthManager,
     private val collaboratorRepository: CollaboratorRepository,
     private val diagnosticTracker: DiagnosticLocationTracker,
+    private val triggerCoordinator: TriggerCoordinator,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -295,6 +297,13 @@ class HomeViewModel @Inject constructor(
             } else {
                 val reminder = reminderRepository.getById(id)
                 if (reminder != null) {
+                    // Armement avec tampon de temporisation (cooldown) pour éviter une alarme immédiate
+                    // si l'utilisateur se trouve déjà physiquement dans la zone au moment de la réactivation
+                    val now = System.currentTimeMillis()
+                    triggerCoordinator.recordTrigger(id, now)
+                    val prefs = context.getSharedPreferences("geofence_tracking", Context.MODE_PRIVATE)
+                    prefs.edit().putLong("last_trigger_time_$id", now).apply()
+
                     if (reminder.triggerType == TriggerType.TIME || reminder.triggerType == TriggerType.BOTH) {
                         reminder.triggerTimeMillis?.let { time ->
                             alarmScheduler.schedule(reminder, time)
