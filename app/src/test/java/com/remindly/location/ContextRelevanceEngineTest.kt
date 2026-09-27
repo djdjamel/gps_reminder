@@ -250,4 +250,93 @@ class ContextRelevanceEngineTest {
 
         assertTrue("Un cap opposé (>110°) doit infliger une pénalité", evaluation.factors.any { it.points < 0 && it.description.contains("sens inverse") })
     }
+
+    @Test
+    fun testFixedPlaceOppositeBearingWhileDriving_suppressesAlarm() {
+        val hotelReminder = Reminder(
+            id = 301L,
+            text = "Hôtel des Pins",
+            triggerType = TriggerType.PLACE,
+            placeLat = 35.5600,
+            placeLng = 6.1400,
+            placeRadiusM = 450f,
+            placeCategory = null, // Lieu fixe
+            status = ReminderStatus.ACTIVE
+        )
+
+        // Véhicule au Sud de l'hôtel (35.5560) roulant vers le Sud (bearing 180°), s'éloignant de la cible (bearing vers cible = 0°)
+        val evaluation = engine.evaluate(
+            reminder = hotelReminder,
+            currentLocation = null,
+            targetLat = 35.5600,
+            targetLng = 6.1400,
+            currentDistanceM = 401f, // Cas réel du log du 27 sept
+            overrideBearing = 180f,  // Roule plein Sud (dos à l'hôtel)
+            overrideSpeedKmh = 42f,  // 42 km/h
+            overrideCurrentLat = 35.5560,
+            overrideCurrentLng = 6.1400
+        )
+
+        assertEquals("Le déclenchement tardif en sens opposé (>95°) doit être SUPPRIMÉ", ContextDecision.SUPPRESS, evaluation.decision)
+        assertTrue(evaluation.factors.any { it.description.contains("Sens opposé") })
+    }
+
+    @Test
+    fun testFixedPlaceApproachingFrontally_firesFullAlarm() {
+        val hotelReminder = Reminder(
+            id = 302L,
+            text = "Hôtel des Pins",
+            triggerType = TriggerType.PLACE,
+            placeLat = 35.5600,
+            placeLng = 6.1400,
+            placeRadiusM = 450f,
+            placeCategory = null,
+            status = ReminderStatus.ACTIVE
+        )
+
+        // Véhicule roulant vers le Nord (bearing 0°), face à l'hôtel
+        val evaluation = engine.evaluate(
+            reminder = hotelReminder,
+            currentLocation = null,
+            targetLat = 35.5600,
+            targetLng = 6.1400,
+            currentDistanceM = 400f,
+            overrideBearing = 0f,
+            overrideSpeedKmh = 42f,
+            overrideCurrentLat = 35.5560,
+            overrideCurrentLng = 6.1400
+        )
+
+        assertEquals(ContextDecision.FULL_ALARM, evaluation.decision)
+        assertEquals(85, evaluation.score)
+    }
+
+    @Test
+    fun testFixedPlaceCloseDistance_ignoresOpposingBearing() {
+        val hotelReminder = Reminder(
+            id = 303L,
+            text = "Hôtel des Pins",
+            triggerType = TriggerType.PLACE,
+            placeLat = 35.5600,
+            placeLng = 6.1400,
+            placeRadiusM = 450f,
+            placeCategory = null,
+            status = ReminderStatus.ACTIVE
+        )
+
+        // Proximité immédiate (120m <= 200m) : manœuvre de stationnement ou demi-tour
+        val evaluation = engine.evaluate(
+            reminder = hotelReminder,
+            currentLocation = null,
+            targetLat = 35.5600,
+            targetLng = 6.1400,
+            currentDistanceM = 120f,
+            overrideBearing = 180f,
+            overrideSpeedKmh = 25f,
+            overrideCurrentLat = 35.5589,
+            overrideCurrentLng = 6.1400
+        )
+
+        assertEquals("À proximité immédiate (<=200m), le lieu fixe délibéré reste garanti", ContextDecision.FULL_ALARM, evaluation.decision)
+    }
 }

@@ -138,8 +138,18 @@ class GeofenceManager @Inject constructor(
                     armCategoryPoIs(reminder)
                 } else if (reminder.placeLat != null && reminder.placeLng != null && reminder.placeLat != 0.0 && reminder.placeLng != 0.0) {
                     // 2. Rappel à adresse fixe unique (Rayon personnalisé ou défaut paramètres)
-                    val radius = reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
-                    val msg = "Enregistrement géofence unique pour '${reminder.placeLabel ?: "Lieu fixe"}' (${reminder.placeLat}, ${reminder.placeLng}) - Rayon ${radius}m"
+                    val semanticRadius = reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
+                    val wakeRadius = maxOf(semanticRadius + 450f, 900f).coerceIn(400f, 1500f)
+
+                    val editor = prefs.edit()
+                    editor.putFloat("semantic_radius_${reminder.id}", semanticRadius)
+                    editor.putFloat("wake_radius_${reminder.id}", wakeRadius)
+                    editor.putString("place_name_${reminder.id}", reminder.placeLabel ?: reminder.text ?: "Lieu fixe")
+                    editor.putFloat("place_lat_${reminder.id}", reminder.placeLat.toFloat())
+                    editor.putFloat("place_lng_${reminder.id}", reminder.placeLng.toFloat())
+                    editor.apply()
+
+                    val msg = "Enregistrement géofence unique pour '${reminder.placeLabel ?: reminder.text ?: "Lieu fixe"}' (${reminder.placeLat}, ${reminder.placeLng}) - Rayon Sémantique: ${semanticRadius.toInt()}m | WakeRadius: ${wakeRadius.toInt()}m"
                     Log.d(tag, "addGeofence: $msg")
                     appLogger.i("GEOFENCE_ARMED", msg, reminder.id)
 
@@ -147,7 +157,7 @@ class GeofenceManager @Inject constructor(
                         reminder.id.toString(),
                         reminder.placeLat,
                         reminder.placeLng,
-                        radius,
+                        wakeRadius,
                         reminder.id,
                         responsivenessMs = 0  // Réactivité maximale pour lieu fixe
                     )
@@ -474,7 +484,14 @@ class GeofenceManager @Inject constructor(
             editor.remove("place_name_$id")
             editor.remove("place_lat_$id")
             editor.remove("place_lng_$id")
+            editor.remove("semantic_radius_$id")
+            editor.remove("wake_radius_$id")
         }
+        editor.remove("semantic_radius_$reminderId")
+        editor.remove("wake_radius_$reminderId")
+        editor.remove("place_name_$reminderId")
+        editor.remove("place_lat_$reminderId")
+        editor.remove("place_lng_$reminderId")
         editor.remove("exit_center_lat_$reminderId")
         editor.remove("exit_center_lng_$reminderId")
         editor.remove("exit_radius_$reminderId")

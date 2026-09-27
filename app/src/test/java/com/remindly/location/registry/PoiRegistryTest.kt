@@ -103,17 +103,17 @@ class PoiRegistryTest {
 
     @Test
     fun testMaterialWakeRadiusBounds() {
-        // Cas 1 : Rayon demandé très petit (100m) -> Borné au minimum matériel 150m
+        // Cas 1 : Rayon demandé 100m -> 100m + 450m = 550m (dans les bornes 400m - 1200m)
         val r1 = DiscoveredPoi.computeMaterialWakeRadius(listOf(100f))
-        assertEquals(150f, r1, 0.01f)
+        assertEquals(550f, r1, 0.01f)
 
-        // Cas 2 : Rayons intermédiaires (180m, 280m) -> Prend le max (280m)
+        // Cas 2 : Rayons intermédiaires (180m, 280m) -> Prend le max (280m) + 450m = 730m
         val r2 = DiscoveredPoi.computeMaterialWakeRadius(listOf(180f, 280f))
-        assertEquals(280f, r2, 0.01f)
+        assertEquals(730f, r2, 0.01f)
 
-        // Cas 3 : Rayon sémantique géant (1000m) -> Plafonné au maximum matériel 400m
+        // Cas 3 : Rayon sémantique géant (1000m) -> 1450m plafonné au maximum matériel 1200m
         val r3 = DiscoveredPoi.computeMaterialWakeRadius(listOf(1000f))
-        assertEquals(400f, r3, 0.01f)
+        assertEquals(1200f, r3, 0.01f)
     }
 
     @Test

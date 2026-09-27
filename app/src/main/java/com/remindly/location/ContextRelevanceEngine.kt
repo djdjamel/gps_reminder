@@ -62,7 +62,34 @@ class ContextRelevanceEngine @Inject constructor(
         // Pour un lieu précis choisi par l'utilisateur, l'intention est forte et explicite.
         val isFixedPlace = reminder.placeCategory == null
         if (isFixedPlace) {
-            // Si on a des échantillons de distance récents montrant qu'on s'éloigne déjà nettement (>30m)
+            val effectiveBearing = overrideBearing ?: if (currentLocation != null && currentLocation.hasBearing()) currentLocation.bearing else null
+            val effectiveCurrentLat = overrideCurrentLat ?: currentLocation?.latitude
+            val effectiveCurrentLng = overrideCurrentLng ?: currentLocation?.longitude
+            val speedKmh = overrideSpeedKmh ?: if (currentLocation != null && currentLocation.hasSpeed()) currentLocation.speed * 3.6f else null
+
+            // 1. Vérification du cap et de l'éloignement en vitesse de déplacement (> 10 km/h)
+            if (effectiveBearing != null && effectiveCurrentLat != null && effectiveCurrentLng != null && targetLat != null && targetLng != null && (speedKmh ?: 0f) >= 10f) {
+                val bearingToTarget = GeofenceFilterUtils.computeBearingDegrees(
+                    fromLat = effectiveCurrentLat,
+                    fromLng = effectiveCurrentLng,
+                    toLat = targetLat,
+                    toLng = targetLng
+                )
+                val angleDiff = GeofenceFilterUtils.calculateAngleDifference(effectiveBearing, bearingToTarget)
+
+                // Si le véhicule tourne le dos au lieu fixe (> 95°) et qu'on est au-delà d'une distance d'arrêt immédiat (> 200m)
+                if (angleDiff > 95f && (currentDistanceM ?: 0f) > 200f) {
+                    factors.add(ScoreFactor("Sens opposé / éloignement net du lieu fixe (Angle: ${angleDiff.toInt()}°, Dist: ${currentDistanceM?.toInt()}m)", -65))
+                    return ContextEvaluation(
+                        score = 20,
+                        decision = ContextDecision.SUPPRESS,
+                        reason = "Sens opposé / éloignement net du lieu fixe (${angleDiff.toInt()}° à ${speedKmh?.toInt()} km/h)",
+                        factors = factors
+                    )
+                }
+            }
+
+            // 2. Si on a des échantillons de distance récents montrant qu'on s'éloigne déjà nettement (>30m)
             val isClearlyReceding = recentDistances.size >= 2 &&
                     (recentDistances.last().distanceM - recentDistances.first().distanceM) > 30f &&
                     (currentDistanceM ?: 0f) > 300f

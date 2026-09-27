@@ -396,7 +396,13 @@ class DrivingPulseService : Service() {
         prefs.edit().putLong("last_trigger_time_${reminderId}", now).apply()
 
         val placeName = poiName ?: reminder.placeLabel ?: reminder.text ?: "Lieu"
-        val triggerMsg = "🎯 [PULSE_TRIGGERED] Déclenchement autonome par Pulse Conduite pour '$placeName' à ${distanceMeters.toInt()}m (Score: ${evaluation.score}pts - ${evaluation.decision})"
+        val speedKmh = if (loc.hasSpeed()) (loc.speed * 3.6f) else 0f
+        val speedMs = if (loc.hasSpeed() && loc.speed > 0f) loc.speed else (speedKmh / 3.6f)
+        val leadTimeSec = if (speedMs > 1.5f && distanceMeters > 0f) (distanceMeters / speedMs).toInt() else null
+        val leadTimeMsg = if (leadTimeSec != null) " | Lead Time: +${leadTimeSec}s (Anticipation)" else ""
+        val firedDetail = " | Dist: ${distanceMeters.toInt()}m | Vitesse: ${speedKmh.toInt()} km/h$leadTimeMsg"
+
+        val triggerMsg = "🎯 [PULSE_TRIGGERED] Déclenchement autonome par Pulse Conduite pour '$placeName'$firedDetail (Score: ${evaluation.score}pts - ${evaluation.decision})"
         Log.i(TAG, triggerMsg)
         appLogger.i("CONTEXT_SCORE", "Score: ${evaluation.score}pts [${evaluation.decision}] | ${evaluation.factors.joinToString { "${it.description} (${it.points}p)" }}", reminderId)
 
@@ -424,13 +430,13 @@ class DrivingPulseService : Service() {
                         placeName = placeName,
                         distanceMeters = distanceMeters
                     )
-                    appLogger.success("NOTIFICATION_FIRED", "Alarme vocale/TTS lancée (Pulse Conduite)", reminderId)
+                    appLogger.success("NOTIFICATION_FIRED", "Alarme vocale/TTS lancée (Pulse Conduite)$firedDetail", reminderId)
                 } catch (e: Exception) {
                     Log.e(TAG, "Impossible de démarrer AudioAlarmService: ${e.message}")
                     appLogger.w("NOTIFICATION_FIRED", "Repli sur notification standard : ${e.message}", reminderId)
                 }
             } else {
-                appLogger.success("NOTIFICATION_FIRED", "Notification affichée pour '${reminder.text}' (Pulse Conduite)", reminderId)
+                appLogger.success("NOTIFICATION_FIRED", "Notification affichée pour '${reminder.text}' (Pulse Conduite)$firedDetail", reminderId)
             }
 
             // Option 2 (Mutual Cancellation) : Le lieu s'étant déclenché, annuler l'alarme d'échéance programmée si applicable

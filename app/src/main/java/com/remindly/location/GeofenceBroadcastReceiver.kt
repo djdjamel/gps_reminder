@@ -54,6 +54,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     @Inject
     lateinit var triggerCoordinator: TriggerCoordinator
 
+    @Inject
+    lateinit var vehicleModeManager: VehicleModeManager
+
     override fun onReceive(context: Context, intent: Intent) {
         val geofencingEvent = GeofencingEvent.fromIntent(intent)
         if (geofencingEvent == null) {
@@ -262,14 +265,19 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 continue
                             }
 
-                            // SÉPARATION SÉMANTIQUE vs RÉVEIL MATÉRIEL (WAIT)
-                            // Si la géofence matérielle a réveillé le téléphone (ex: 280m), mais que le rappel exige 150m
-                            if (link != null && distanceMeters != null && distanceMeters > link.semanticRadiusM) {
-                                link.state = LinkLifecycleState.WAITING
-                                link.retryDistanceM = link.semanticRadiusM
-                                val waitMsg = "⏳ Réveil matériel à ${distanceMeters.toInt()}m. En attente du rayon sémantique (${link.semanticRadiusM.toInt()}m) pour '${reminder.text}'"
+                            // SÉPARATION SÉMANTIQUE vs RÉVEIL MATÉRIEL (DOORBELL & ADAPTIVE PULSE)
+                            // Si la géofence matérielle a réveillé le téléphone (ex: 850m), mais que le rappel exige 450m ou 150m
+                            val configuredSemanticRadius = link?.semanticRadiusM
+                                ?: prefs.getFloat("semantic_radius_${reminder.id}", reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat())
+
+                            if (distanceMeters == null || distanceMeters > configuredSemanticRadius) {
+                                link?.state = LinkLifecycleState.WAITING
+                                link?.retryDistanceM = configuredSemanticRadius
+                                val distStr = if (distanceMeters != null) "${distanceMeters.toInt()}m" else "inconnue"
+                                val waitMsg = "⏳ [DOORBELL] Réveil matériel à distance $distStr. En attente du rayon sémantique (${configuredSemanticRadius.toInt()}m) pour '${reminder.text}' -> Démarrage de l'Adaptive Pulse"
                                 android.util.Log.d("GeofenceReceiver", waitMsg)
                                 appLogger.i("GEOFENCE_WAITING", waitMsg, reminder.id)
+                                vehicleModeManager.startPulseForApproach("Réveil matériel ($distStr) pour '${reminder.text}' (Rayon: ${configuredSemanticRadius.toInt()}m)")
                                 continue
                             }
 
@@ -304,7 +312,11 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                         if (validatedReminders.size == 1) {
                             val (reminder, evaluation) = validatedReminders.first()
                             val distInfo = if (distanceMeters != null) " | Dist: ${distanceMeters.toInt()}m" else ""
-                            val triggerMsg = "Transition $transitionName sur '${detectedPlaceName ?: reminder.placeLabel ?: "Lieu"}'$distInfo (Score: ${evaluation.score}pts)"
+                            val speedKmh = if (locForDistance != null && locForDistance.hasSpeed()) (locForDistance.speed * 3.6f) else 0f
+                            val speedMs = if (locForDistance != null && locForDistance.hasSpeed() && locForDistance.speed > 0f) locForDistance.speed else (speedKmh / 3.6f)
+                            val leadTimeSec = if (speedMs > 1.5f && distanceMeters != null && distanceMeters > 0f) (distanceMeters / speedMs).toInt() else null
+                            val leadTimeMsg = if (leadTimeSec != null) " | Lead Time: +${leadTimeSec}s (Anticipation)" else ""
+                            val triggerMsg = "Transition $transitionName sur '${detectedPlaceName ?: reminder.placeLabel ?: "Lieu"}'$distInfo$leadTimeMsg (Score: ${evaluation.score}pts)"
                             android.util.Log.i("GeofenceReceiver", "DÉCLENCHEMENT DU RAPPEL ${reminder.id}: '${reminder.text}' - $triggerMsg")
                             appLogger.success("GEOFENCE_TRIGGERED", triggerMsg, reminder.id)
 
@@ -339,7 +351,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                             placeName = detectedPlaceName ?: reminder.placeLabel,
                                             distanceMeters = distanceMeters
                                         )
-                                        appLogger.success("NOTIFICATION_FIRED", "Alarme vocale/TTS lancée", reminder.id)
+                                        val firedMsg = "Alarme vocale/TTS lancée$distInfo | Vitesse: ${speedKmh.toInt()} km/h$leadTimeMsg"
+                                        appLogger.success("NOTIFICATION_FIRED", firedMsg, reminder.id)
                                     } catch (e: Exception) {
                                         android.util.Log.e("GeofenceReceiver", "Impossible de démarrer AudioAlarmService: ${e.message}")
                                     }

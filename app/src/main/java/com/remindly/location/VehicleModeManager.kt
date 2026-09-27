@@ -132,6 +132,24 @@ class VehicleModeManager @Inject constructor(
         }
     }
 
+    /**
+     * Démarrage immédiat du Pulse GPS lors d'un réveil matériel (Doorbell Geofence).
+     * Permet d'embrayer la haute précision (15s) dès l'entrée dans la zone de pré-réveil (WakeRadius),
+     * sans avoir à attendre une détection d'Activity Recognition (qui peut être différée de plusieurs minutes).
+     */
+    fun startPulseForApproach(reason: String = "Zone de pré-réveil atteinte") {
+        scope.launch {
+            try {
+                val msg = "⚡ [WAKE_PULSE] $reason -> Démarrage de l'Adaptive Location Pulse"
+                Log.i(TAG, msg)
+                appLogger.i(ActivityTransitionReceiver.TAG_LOG, msg)
+                startDrivingPulseService()
+            } catch (e: Exception) {
+                Log.e(TAG, "Erreur startPulseForApproach: ${e.message}", e)
+            }
+        }
+    }
+
     fun onVehicleExit() {
         scope.launch {
             try {

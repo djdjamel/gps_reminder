@@ -32,22 +32,23 @@ data class DiscoveredPoi(
     val address: String? = null,
     val confidence: Float = 1.0f,           // 1.0f si source croisée (HYBRID), 0.85f si source unique
     var hardwareStatus: PoiHardwareStatus = PoiHardwareStatus.DISCOVERED,
-    var materialWakeRadiusM: Float = 250f   // Rayon matériel unifié pour le réveil Android (borné entre 150m et 400m)
+    var materialWakeRadiusM: Float = 850f   // Rayon matériel unifié pour le pré-réveil Android (borné entre 400m et 1200m)
 ) {
     companion object {
-        const val MIN_HARDWARE_WAKE_RADIUS_M = 150f
-        const val MAX_HARDWARE_WAKE_RADIUS_M = 400f
-        const val DEFAULT_HARDWARE_WAKE_RADIUS_M = 250f
+        const val MIN_HARDWARE_WAKE_RADIUS_M = 400f
+        const val MAX_HARDWARE_WAKE_RADIUS_M = 1200f
+        const val DEFAULT_HARDWARE_WAKE_RADIUS_M = 850f
 
         /**
          * Calcule le rayon matériel de réveil en fonction des rayons sémantiques souhaités
-         * par les différents rappels associés, tout en restant dans les bornes optimales
-         * d'Android (min 150m pour éviter la latence GPS, max 400m pour éviter les faux réveils).
+         * par les différents rappels associés, avec une marge d'anticipation pour la détection
+         * et l'embrayage du Pulse GPS avant l'arrivée au lieu (borné entre 400m et 1200m).
          */
         fun computeMaterialWakeRadius(semanticRadii: Collection<Float>): Float {
             if (semanticRadii.isEmpty()) return DEFAULT_HARDWARE_WAKE_RADIUS_M
             val maxRequested = semanticRadii.maxOrNull() ?: DEFAULT_HARDWARE_WAKE_RADIUS_M
-            return maxRequested.coerceIn(MIN_HARDWARE_WAKE_RADIUS_M, MAX_HARDWARE_WAKE_RADIUS_M)
+            val desiredWake = maxRequested + 450f
+            return desiredWake.coerceIn(MIN_HARDWARE_WAKE_RADIUS_M, MAX_HARDWARE_WAKE_RADIUS_M)
         }
     }
 }
