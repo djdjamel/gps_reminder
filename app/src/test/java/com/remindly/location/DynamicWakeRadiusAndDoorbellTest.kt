@@ -27,22 +27,80 @@ class DynamicWakeRadiusAndDoorbellTest {
     }
 
     @Test
-    fun testFixedPlaceWakeRadiusFormula() {
-        fun computeFixedWakeRadius(semanticRadius: Float): Float {
-            return maxOf(semanticRadius + 450f, 900f).coerceIn(400f, 1500f)
-        }
+    fun testDynamicWakeRadius_walkingProfile() {
+        // Mode Piéton (WALKING / ON_FOOT) : réveil optimisé à ~3 minutes de marche (min 250m, max 600m)
+        val wake150 = GeofenceFilterUtils.computeDynamicWakeRadius(
+            semanticRadius = 150f,
+            activityType = com.google.android.gms.location.DetectedActivity.WALKING
+        )
+        assertEquals("À pied, 150m sémantique donne 300m de réveil au lieu de 900m", 300f, wake150, 0.01f)
 
-        // Rayon sémantique standard (450m) -> WakeRadius = 900m
-        assertEquals(900f, computeFixedWakeRadius(450f), 0.01f)
+        val wake450 = GeofenceFilterUtils.computeDynamicWakeRadius(
+            semanticRadius = 450f,
+            activityType = com.google.android.gms.location.DetectedActivity.WALKING
+        )
+        assertEquals("À pied, 450m sémantique donne 600m de réveil", 600f, wake450, 0.01f)
 
-        // Rayon sémantique plus serré (150m) -> WakeRadius maintenu au seuil plancher de sécurité de 900m
-        assertEquals(900f, computeFixedWakeRadius(150f), 0.01f)
+        val wakeTiny = GeofenceFilterUtils.computeDynamicWakeRadius(
+            semanticRadius = 80f,
+            activityType = com.google.android.gms.location.DetectedActivity.ON_FOOT
+        )
+        assertEquals("Plancher piéton garanti à 250m", 250f, wakeTiny, 0.01f)
+    }
 
-        // Rayon sémantique large (600m) -> WakeRadius = 1050m
-        assertEquals(1050f, computeFixedWakeRadius(600f), 0.01f)
+    @Test
+    fun testDynamicWakeRadius_cyclingProfile() {
+        // Mode Vélo (ON_BICYCLE) : réveil modéré (buffer 300m, borné entre 350m et 850m)
+        val wake150 = GeofenceFilterUtils.computeDynamicWakeRadius(
+            semanticRadius = 150f,
+            activityType = com.google.android.gms.location.DetectedActivity.ON_BICYCLE
+        )
+        assertEquals(450f, wake150, 0.01f)
 
-        // Rayon sémantique très large (1200m) -> Coercé au plafond 1500m
-        assertEquals(1500f, computeFixedWakeRadius(1200f), 0.01f)
+        val wake450 = GeofenceFilterUtils.computeDynamicWakeRadius(
+            semanticRadius = 450f,
+            activityType = com.google.android.gms.location.DetectedActivity.ON_BICYCLE
+        )
+        assertEquals(750f, wake450, 0.01f)
+    }
+
+    @Test
+    fun testDynamicWakeRadius_inVehicleProfile() {
+        // Mode Véhicule urbain (IN_VEHICLE) : buffer 600m avec plancher garanti à 900m pour lieu fixe
+        val wake150 = GeofenceFilterUtils.computeDynamicWakeRadius(
+            semanticRadius = 150f,
+            activityType = com.google.android.gms.location.DetectedActivity.IN_VEHICLE,
+            isFixedPlace = true
+        )
+        assertEquals("En véhicule, seuil plancher à 900m garanti", 900f, wake150, 0.01f)
+
+        val wake450 = GeofenceFilterUtils.computeDynamicWakeRadius(
+            semanticRadius = 450f,
+            activityType = com.google.android.gms.location.DetectedActivity.IN_VEHICLE,
+            isFixedPlace = true
+        )
+        assertEquals("En véhicule, 450m sémantique donne 1050m de réveil", 1050f, wake450, 0.01f)
+    }
+
+    @Test
+    fun testDynamicWakeRadius_highSpeedHighwayProfile() {
+        // Voie rapide / Autoroute (> 70 km/h, ex: 90 km/h = 25 m/s -> 1350m buffer)
+        val wakeHighway = GeofenceFilterUtils.computeDynamicWakeRadius(
+            semanticRadius = 150f,
+            speedKmh = 90f
+        )
+        assertEquals("Sur voie rapide (90 km/h), le réveil s'étend à 1500m", 1500f, wakeHighway, 0.01f)
+    }
+
+    @Test
+    fun testDynamicWakeRadius_defaultProfile() {
+        // Profil standard / immobile (STILL ou UNKNOWN) pour lieu fixe
+        val wakeStandard = GeofenceFilterUtils.computeDynamicWakeRadius(
+            semanticRadius = 450f,
+            activityType = com.google.android.gms.location.DetectedActivity.UNKNOWN,
+            isFixedPlace = true
+        )
+        assertEquals("Valeur de référence validée sur le terrain = 900m", 900f, wakeStandard, 0.01f)
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.remindly.location
 
 import android.location.Location
+import com.google.android.gms.location.DetectedActivity
 
 data class GeofenceRelevanceResult(
     val isRelevant: Boolean,
@@ -11,6 +12,73 @@ data class GeofenceRelevanceResult(
 )
 
 object GeofenceFilterUtils {
+
+    /**
+     * Calcule le rayon de pré-réveil matériel (WakeRadius / Coup de sonnette) adaptatif (Point 7-9 ChatGPT).
+     *
+     * Formule :
+     *   WakeRadius = SemanticRadius + AnticipationDistance + LocationUncertainty
+     *
+     * Profils adaptatifs :
+     * 1. Si la vitesse est connue (> 5 km/h) :
+     *    - Anticipation de 50 secondes : (vitesse m/s) * 50s + 100m incertitude.
+     * 2. Si la vitesse est inconnue, basée sur le type d'activité détecté :
+     *    - WALKING / ON_FOOT / RUNNING : ~5 km/h -> buffer = 150m (borné entre 250m et 600m)
+     *    - ON_BICYCLE : ~18 km/h -> buffer = 300m (borné entre 350m et 850m)
+     *    - IN_VEHICLE : ~50 km/h -> buffer = 600m (borné entre 900m et 1500m)
+     *    - Par défaut (STILL / UNKNOWN) : buffer = 450m (borné entre 400m et 1200m, seuil plancher véhicule 900m pour lieu fixe)
+     */
+    fun computeDynamicWakeRadius(
+        semanticRadius: Float,
+        activityType: Int = DetectedActivity.UNKNOWN,
+        speedKmh: Float? = null,
+        isFixedPlace: Boolean = false
+    ): Float {
+        val baseBuffer = if (speedKmh != null && speedKmh > 5f) {
+            val speedMs = speedKmh / 3.6f
+            val reactionDist = speedMs * 50f // 50 secondes d'anticipation
+            reactionDist + 100f // Marge d'incertitude GPS
+        } else {
+            when (activityType) {
+                DetectedActivity.WALKING,
+                DetectedActivity.ON_FOOT,
+                DetectedActivity.RUNNING -> 150f
+
+                DetectedActivity.ON_BICYCLE -> 300f
+
+                DetectedActivity.IN_VEHICLE -> 600f
+
+                else -> 450f
+            }
+        }
+
+        val rawWake = semanticRadius + baseBuffer
+
+        return when {
+            speedKmh != null && speedKmh > 70f -> {
+                // Voie rapide / Autoroute : jusqu'à 1500m
+                rawWake.coerceIn(900f, 1500f)
+            }
+            activityType == DetectedActivity.WALKING ||
+            activityType == DetectedActivity.ON_FOOT ||
+            activityType == DetectedActivity.RUNNING -> {
+                // Mode piéton : éviter le réveil prématuré (min 250m, max 600m)
+                rawWake.coerceIn(250f, 600f)
+            }
+            activityType == DetectedActivity.ON_BICYCLE -> {
+                // Mode vélo : réveil modéré (min 350m, max 850m)
+                rawWake.coerceIn(350f, 850f)
+            }
+            isFixedPlace -> {
+                // Lieu fixe avec activité indéterminée ou véhicule : minimum 900m garanti (testé sur le terrain)
+                maxOf(rawWake, 900f).coerceIn(400f, 1500f)
+            }
+            else -> {
+                // POI général / veille standard : borné entre 400m et 1200m
+                rawWake.coerceIn(400f, 1200f)
+            }
+        }
+    }
 
     /**
      * Calcule le relèvement (bearing en degrés 0..360) entre deux coordonnées GPS.

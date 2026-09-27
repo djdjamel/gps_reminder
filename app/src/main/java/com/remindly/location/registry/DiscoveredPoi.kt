@@ -41,14 +41,22 @@ data class DiscoveredPoi(
 
         /**
          * Calcule le rayon matériel de réveil en fonction des rayons sémantiques souhaités
-         * par les différents rappels associés, avec une marge d'anticipation pour la détection
-         * et l'embrayage du Pulse GPS avant l'arrivée au lieu (borné entre 400m et 1200m).
+         * par les différents rappels associés, de l'activité courante et de la vitesse constatée
+         * (Point 7-9 ChatGPT).
          */
-        fun computeMaterialWakeRadius(semanticRadii: Collection<Float>): Float {
+        fun computeMaterialWakeRadius(
+            semanticRadii: Collection<Float>,
+            activityType: Int = com.google.android.gms.location.DetectedActivity.UNKNOWN,
+            speedKmh: Float? = null
+        ): Float {
             if (semanticRadii.isEmpty()) return DEFAULT_HARDWARE_WAKE_RADIUS_M
             val maxRequested = semanticRadii.maxOrNull() ?: DEFAULT_HARDWARE_WAKE_RADIUS_M
-            val desiredWake = maxRequested + 450f
-            return desiredWake.coerceIn(MIN_HARDWARE_WAKE_RADIUS_M, MAX_HARDWARE_WAKE_RADIUS_M)
+            return com.remindly.location.GeofenceFilterUtils.computeDynamicWakeRadius(
+                semanticRadius = maxRequested,
+                activityType = activityType,
+                speedKmh = speedKmh,
+                isFixedPlace = false
+            )
         }
     }
 }

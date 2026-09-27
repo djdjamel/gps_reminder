@@ -52,7 +52,8 @@ class GeofenceManager @Inject constructor(
     private val poiRegistry: PoiRegistry,
     private val scheduler: ContextualGeofenceScheduler,
     private val diffEngine: GeofenceDiffEngine,
-    private val triggerCoordinator: TriggerCoordinator
+    private val triggerCoordinator: TriggerCoordinator,
+    private val userActivityTracker: UserActivityTracker
 ) {
     private val tag = "GeofenceManager"
     private val geofencingClient: GeofencingClient = LocationServices.getGeofencingClient(context)
@@ -139,7 +140,12 @@ class GeofenceManager @Inject constructor(
                 } else if (reminder.placeLat != null && reminder.placeLng != null && reminder.placeLat != 0.0 && reminder.placeLng != 0.0) {
                     // 2. Rappel à adresse fixe unique (Rayon personnalisé ou défaut paramètres)
                     val semanticRadius = reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
-                    val wakeRadius = maxOf(semanticRadius + 450f, 900f).coerceIn(400f, 1500f)
+                    val currentActivity = userActivityTracker.currentActivity.value
+                    val wakeRadius = GeofenceFilterUtils.computeDynamicWakeRadius(
+                        semanticRadius = semanticRadius,
+                        activityType = currentActivity,
+                        isFixedPlace = true
+                    )
 
                     val editor = prefs.edit()
                     editor.putFloat("semantic_radius_${reminder.id}", semanticRadius)
@@ -149,7 +155,8 @@ class GeofenceManager @Inject constructor(
                     editor.putFloat("place_lng_${reminder.id}", reminder.placeLng.toFloat())
                     editor.apply()
 
-                    val msg = "Enregistrement géofence unique pour '${reminder.placeLabel ?: reminder.text ?: "Lieu fixe"}' (${reminder.placeLat}, ${reminder.placeLng}) - Rayon Sémantique: ${semanticRadius.toInt()}m | WakeRadius: ${wakeRadius.toInt()}m"
+                    val activityLabel = ActivityTransitionReceiver.getActivityLabel(currentActivity).second
+                    val msg = "Enregistrement géofence unique pour '${reminder.placeLabel ?: reminder.text ?: "Lieu fixe"}' (${reminder.placeLat}, ${reminder.placeLng}) - Rayon Sémantique: ${semanticRadius.toInt()}m | WakeRadius: ${wakeRadius.toInt()}m [$activityLabel]"
                     Log.d(tag, "addGeofence: $msg")
                     appLogger.i("GEOFENCE_ARMED", msg, reminder.id)
 
@@ -271,10 +278,12 @@ class GeofenceManager @Inject constructor(
                         )
 
                         // 3. Liaison sémantique Reminder <-> POI
+                        val currentActivity = userActivityTracker.currentActivity.value
                         val link = poiRegistry.linkReminderToPoi(
                             reminderId = reminder.id,
                             poiId = poi.id,
-                            semanticRadiusM = detectionRadiusM
+                            semanticRadiusM = detectionRadiusM,
+                            activityType = currentActivity
                         )
 
                         // 4. Calcul du contextScore initial

@@ -105,7 +105,8 @@ class PoiRegistry @Inject constructor() {
     fun linkReminderToPoi(
         reminderId: Long,
         poiId: String,
-        semanticRadiusM: Float
+        semanticRadiusM: Float,
+        activityType: Int = com.google.android.gms.location.DetectedActivity.UNKNOWN
     ): ReminderPoiLink {
         val poi = pois[poiId] ?: throw IllegalArgumentException("POI inconnu dans le registre : $poiId")
 
@@ -123,7 +124,7 @@ class PoiRegistry @Inject constructor() {
 
         // Recalcul du rayon matériel unifié de réveil pour ce POI
         val allSemanticRadii = poiLinks.map { it.semanticRadiusM }
-        poi.materialWakeRadiusM = DiscoveredPoi.computeMaterialWakeRadius(allSemanticRadii)
+        poi.materialWakeRadiusM = DiscoveredPoi.computeMaterialWakeRadius(allSemanticRadii, activityType = activityType)
 
         return link
     }
