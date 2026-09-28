@@ -73,6 +73,7 @@ class DrivingPulseService : Service() {
     private var isRunning = false
     private var isPaused = false
     private var consecutiveZeroSpeedCount = 0
+    private var lastMinDistanceMeters = Float.MAX_VALUE
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -118,6 +119,7 @@ class DrivingPulseService : Service() {
         isRunning = true
         isPaused = false
         consecutiveZeroSpeedCount = 0
+        lastMinDistanceMeters = Float.MAX_VALUE
 
         val notification = buildNotification("Surveillance GPS optimisée de vos rappels")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -198,11 +200,15 @@ class DrivingPulseService : Service() {
         val speedKmh = if (loc.hasSpeed()) (loc.speed * 3.6f).toInt() else 0
         val bearing = if (loc.hasBearing()) "${loc.bearing.toInt()}°" else "-"
 
+        val hasWaitingLink = poiRegistry.getAllLinks().any { it.state == com.remindly.location.registry.LinkLifecycleState.WAITING }
+        val isApproachingTarget = (lastMinDistanceMeters <= 1000f) || hasWaitingLink
+
         // Watchdog d'inactivité : Si vitesse < 5 km/h pendant 8 points consécutifs (~2 min), auto-arrêt
-        if (speedKmh < 5) {
+        // MAIS ne coupe JAMAIS la surveillance si le véhicule est en approche (< 1km) ou bloqué dans les bouchons devant une cible !
+        if (speedKmh < 5 && !isApproachingTarget) {
             consecutiveZeroSpeedCount++
             if (consecutiveZeroSpeedCount >= 8) {
-                val autoStopMsg = "🛑 Mode Conduite : Arrêt automatique après 2 min d'immobilité prolongée (< 5 km/h)"
+                val autoStopMsg = "🛑 Mode Conduite : Arrêt automatique après 2 min d'immobilité prolongée (< 5 km/h) hors zone d'approche"
                 Log.i(TAG, autoStopMsg)
                 appLogger.i(ActivityTransitionReceiver.TAG_LOG, autoStopMsg)
                 stopPulse()
@@ -298,9 +304,12 @@ class DrivingPulseService : Service() {
                             for (reqId in trackedIds) {
                                 if (reqId.endsWith("_exit_zone") || reqId.endsWith("_stage_dest")) continue
 
-                                val poiLat = prefs.getFloat("place_lat_$reqId", Float.NaN)
-                                val poiLng = prefs.getFloat("place_lng_$reqId", Float.NaN)
-                                val poiName = prefs.getString("place_name_$reqId", null) ?: r.placeLabel ?: "Commerce"
+                                val poiId = prefs.getString("poi_id_$reqId", null)
+                                val poiFromRegistry = if (poiId != null) poiRegistry.getPoi(poiId) else null
+
+                                val poiLat = poiFromRegistry?.latitude?.toFloat() ?: prefs.getFloat("place_lat_$reqId", Float.NaN)
+                                val poiLng = poiFromRegistry?.longitude?.toFloat() ?: prefs.getFloat("place_lng_$reqId", Float.NaN)
+                                val poiName = poiFromRegistry?.name ?: prefs.getString("place_name_$reqId", null) ?: r.placeLabel ?: "Commerce"
 
                                 if (!poiLat.isNaN() && !poiLng.isNaN()) {
                                     val results = FloatArray(1)
@@ -356,12 +365,15 @@ class DrivingPulseService : Service() {
                     }
 
                     if (minDistance != Float.MAX_VALUE) {
+                        lastMinDistanceMeters = minDistance
                         val distFormatted = if (minDistance < 1000f) {
                             "${minDistance.toInt()}m"
                         } else {
                             String.format(Locale.ROOT, "%.1fkm", minDistance / 1000f)
                         }
                         closestInfo = " | Cible: '$closestLabel' à $distFormatted"
+                    } else {
+                        lastMinDistanceMeters = Float.MAX_VALUE
                     }
                 }
 
@@ -415,17 +427,12 @@ class DrivingPulseService : Service() {
             }
         }
 
-        // Double verrouillage atomique thread-safe : TriggerCoordinator + SharedPreferences
-        val acquiredInCoordinator = triggerCoordinator.tryAcquireTrigger(reminderId, cooldownMs)
-        val lastTrigger = prefs.getLong("last_trigger_time_${reminderId}", 0L)
-        val isCooldown = !acquiredInCoordinator || ((now - lastTrigger) < cooldownMs)
-
-        if (isCooldown) {
+        // Autorité unique atomique et persistante : TriggerCoordinator
+        if (!triggerCoordinator.tryAcquireTrigger(reminderId, cooldownMs)) {
             Log.i(TAG, "Déclenchement Pulse Conduite ignoré pour #$reminderId : cooldown actif ou déclenchement concurrent.")
             return
         }
 
-        prefs.edit().putLong("last_trigger_time_${reminderId}", now).apply()
         if (isOpportunisticCategory) {
             triggerCoordinator.recordCategoryTrigger(reminderId, loc, now)
         }

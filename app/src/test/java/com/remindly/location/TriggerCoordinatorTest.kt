@@ -235,5 +235,78 @@ class TriggerCoordinatorTest {
             coordinator.canTriggerCategoryOpportunity(reminderId, locClose, DetectedActivity.IN_VEHICLE)
         )
     }
+
+    private class FakeSharedPreferences : android.content.SharedPreferences {
+        private val map = mutableMapOf<String, Any>()
+
+        override fun getAll(): MutableMap<String, *> = map
+        override fun getString(key: String?, defValue: String?): String? = map[key] as? String ?: defValue
+        override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? = map[key] as? MutableSet<String> ?: defValues
+        override fun getInt(key: String?, defValue: Int): Int = map[key] as? Int ?: defValue
+        override fun getLong(key: String?, defValue: Long): Long = map[key] as? Long ?: defValue
+        override fun getFloat(key: String?, defValue: Float): Float = map[key] as? Float ?: defValue
+        override fun getBoolean(key: String?, defValue: Boolean): Boolean = map[key] as? Boolean ?: defValue
+        override fun contains(key: String?): Boolean = map.containsKey(key)
+        override fun registerOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?) {}
+        override fun unregisterOnSharedPreferenceChangeListener(listener: android.content.SharedPreferences.OnSharedPreferenceChangeListener?) {}
+
+        override fun edit(): android.content.SharedPreferences.Editor = FakeEditor(map)
+
+        private class FakeEditor(private val backingMap: MutableMap<String, Any>) : android.content.SharedPreferences.Editor {
+            private val pending = mutableMapOf<String, Any?>()
+            private var clearRequested = false
+
+            override fun putString(key: String?, value: String?) = apply { key?.let { pending[it] = value } }
+            override fun putStringSet(key: String?, values: MutableSet<String>?) = apply { key?.let { pending[it] = values } }
+            override fun putInt(key: String?, value: Int) = apply { key?.let { pending[it] = value } }
+            override fun putLong(key: String?, value: Long) = apply { key?.let { pending[it] = value } }
+            override fun putFloat(key: String?, value: Float) = apply { key?.let { pending[it] = value } }
+            override fun putBoolean(key: String?, value: Boolean) = apply { key?.let { pending[it] = value } }
+            override fun remove(key: String?) = apply { key?.let { pending[it] = this } }
+            override fun clear() = apply { clearRequested = true }
+            override fun commit(): Boolean { apply(); return true }
+            override fun apply() {
+                if (clearRequested) backingMap.clear()
+                for ((k, v) in pending) {
+                    if (v === this) backingMap.remove(k) else if (v != null) backingMap[k] = v
+                }
+                pending.clear()
+            }
+        }
+    }
+
+    @Test
+    fun testPersistence_survivesProcessDeathAndRecreation() {
+        val sharedPrefs = FakeSharedPreferences()
+
+        // Instance 1 : déclenche un commerce opportuniste
+        val instance1 = TriggerCoordinator(sharedPrefs)
+        val reminderId = 301L
+        val locA = createLocation(36.75000, 3.05000)
+        val now = System.currentTimeMillis()
+        instance1.recordCategoryTrigger(reminderId, locA, timestamp = now - 70_000L) // > 60s
+        assertTrue(instance1.tryAcquireTrigger(reminderId, cooldownMs = 60_000L))
+
+        // Simulation : Android tue le process, instance1 est détruite de la RAM.
+        // Instance 2 est créée ultérieurement avec le même SharedPreferences persistant
+        val instance2 = TriggerCoordinator(sharedPrefs)
+
+        // 1. Le cooldown de tryAcquireTrigger doit être actif dans instance2 (< 60s écoulées depuis tryAcquireTrigger)
+        assertFalse("Le cooldown doit persister sur disque dans la nouvelle instance", instance2.tryAcquireTrigger(reminderId, 60_000L))
+
+        // 2. La contrainte de distance de l'opportunité (300m) doit persister sur disque dans instance2 !
+        val locClose = createLocation(36.75100, 3.05000) // ~111m (< 300m)
+        val locFar = createLocation(36.75400, 3.05000)   // ~444m (>= 300m)
+
+        assertFalse(
+            "À 111m (< 300m), la contrainte d'opportunité restaurée depuis le disque doit bloquer",
+            instance2.canTriggerCategoryOpportunity(reminderId, locClose, DetectedActivity.IN_VEHICLE)
+        )
+
+        assertTrue(
+            "À 444m (>= 300m), la contrainte d'opportunité restaurée depuis le disque doit autoriser",
+            instance2.canTriggerCategoryOpportunity(reminderId, locFar, DetectedActivity.IN_VEHICLE)
+        )
+    }
 }
 

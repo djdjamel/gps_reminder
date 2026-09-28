@@ -205,6 +205,8 @@ class PoiRegistry @Inject constructor() {
 
     fun getAllPois(): List<DiscoveredPoi> = pois.values.toList()
 
+    fun getAllLinks(): List<ReminderPoiLink> = linksByReminder.values.flatMap { it.values }
+
     fun clear() {
         pois.clear()
         linksByReminder.clear()

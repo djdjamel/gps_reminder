@@ -349,8 +349,38 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                         val now = System.currentTimeMillis()
                         val cooldownMs = settings.geofenceCooldownSeconds * 1000L
 
-                        if (validatedReminders.size == 1) {
-                            val (reminder, evaluation) = validatedReminders.first()
+                        // 1. Filtrage strict des rappels éligibles et non soumis au cooldown (Autorité unique TriggerCoordinator)
+                        val actuallyTriggeredReminders = mutableListOf<Pair<Reminder, ContextEvaluation>>()
+                        for ((reminder, evaluation) in validatedReminders) {
+                            val freshReminder = reminderRepository.getById(reminder.id)
+                            if (freshReminder == null || freshReminder.status != ReminderStatus.ACTIVE) {
+                                val suppressedMsg = "🚫 Alerte de lieu ignorée : rappel #${reminder.id} déjà terminé ou inactif."
+                                android.util.Log.i("GeofenceReceiver", suppressedMsg)
+                                continue
+                            }
+
+                            if (!triggerCoordinator.tryAcquireTrigger(reminder.id, cooldownMs)) {
+                                val cdMsg = "⏳ Alerte ignorée : rappel #${reminder.id} en cooldown actif."
+                                android.util.Log.i("GeofenceReceiver", cdMsg)
+                                continue
+                            }
+
+                            if (reminder.placeCategory != null && !reminder.isRepeating) {
+                                triggerCoordinator.recordCategoryTrigger(reminder.id, locForDistance, now)
+                            }
+
+                            actuallyTriggeredReminders.add(Pair(freshReminder, evaluation))
+                        }
+
+                        if (actuallyTriggeredReminders.isEmpty()) {
+                            continue
+                        }
+
+                        val notifier = ReminderNotifier(context)
+                        val placeLabel = detectedPlaceName ?: "ce commerce"
+
+                        if (actuallyTriggeredReminders.size == 1) {
+                            val (reminder, evaluation) = actuallyTriggeredReminders.first()
                             val distInfo = if (distanceMeters != null) " | Dist: ${distanceMeters.toInt()}m" else ""
                             val speedKmh = if (locForDistance != null && locForDistance.hasSpeed()) (locForDistance.speed * 3.6f) else 0f
                             val speedMs = if (locForDistance != null && locForDistance.hasSpeed() && locForDistance.speed > 0f) locForDistance.speed else (speedKmh / 3.6f)
@@ -360,86 +390,53 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             android.util.Log.i("GeofenceReceiver", "DÉCLENCHEMENT DU RAPPEL ${reminder.id}: '${reminder.text}' - $triggerMsg")
                             appLogger.success("GEOFENCE_TRIGGERED", triggerMsg, reminder.id)
 
-                            val freshReminder = reminderRepository.getById(reminder.id)
-                            if (freshReminder == null || freshReminder.status != ReminderStatus.ACTIVE) {
-                                val suppressedMsg = "🚫 Alerte de lieu ignorée : rappel #${reminder.id} déjà terminé ou inactif."
-                                android.util.Log.i("GeofenceReceiver", suppressedMsg)
-                                continue
-                            }
+                            notifier.showPlaceReminder(
+                                reminder = reminder,
+                                detectedPlaceName = detectedPlaceName,
+                                distanceMeters = distanceMeters,
+                                poiId = poiId
+                            )
 
-                            val acquiredInCoordinator = triggerCoordinator.tryAcquireTrigger(reminder.id, cooldownMs)
-                            val lastTrigger = prefs.getLong("last_trigger_time_${reminder.id}", 0L)
-                            val isCooldown = !acquiredInCoordinator || ((now - lastTrigger) < cooldownMs)
+                            val audioAttachment = reminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
+                            val shouldStartAudioService = (evaluation.decision == ContextDecision.FULL_ALARM ||
+                                (evaluation.decision == ContextDecision.DISCREET_NOTIF && evaluation.score >= 45)) &&
+                                ((audioAttachment != null) || ((settings.readTextRemindersAloud || settings.announcePlaceByVoice) && !reminder.text.isNullOrBlank()))
 
-                            if (!isCooldown) {
-                                prefs.edit().putLong("last_trigger_time_${reminder.id}", now).apply()
-                                if (reminder.placeCategory != null && !reminder.isRepeating) {
-                                    triggerCoordinator.recordCategoryTrigger(reminder.id, locForDistance, now)
-                                }
-                                val notifier = ReminderNotifier(context)
-                                notifier.showPlaceReminder(
-                                    reminder = reminder,
-                                    detectedPlaceName = detectedPlaceName,
-                                    distanceMeters = distanceMeters,
-                                    poiId = poiId
-                                )
-
-                                val audioAttachment = freshReminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
-                                val shouldStartAudioService = (evaluation.decision == ContextDecision.FULL_ALARM ||
-                                    (evaluation.decision == ContextDecision.DISCREET_NOTIF && evaluation.score >= 45)) &&
-                                    ((audioAttachment != null) || ((settings.readTextRemindersAloud || settings.announcePlaceByVoice) && !reminder.text.isNullOrBlank()))
-
-                                if (shouldStartAudioService) {
-                                    try {
-                                        AudioAlarmService.start(
-                                            context = context,
-                                            audioPath = audioAttachment?.localPath,
-                                            reminderText = reminder.text ?: "Rappel",
-                                            reminderId = reminder.id,
-                                            placeName = detectedPlaceName ?: reminder.placeLabel,
-                                            distanceMeters = distanceMeters
-                                        )
-                                        val firedMsg = "Alarme vocale/TTS lancée$distInfo | Vitesse: ${speedKmh.toInt()} km/h$leadTimeMsg"
-                                        appLogger.success("NOTIFICATION_FIRED", firedMsg, reminder.id)
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("GeofenceReceiver", "Impossible de démarrer AudioAlarmService: ${e.message}")
-                                    }
+                            if (shouldStartAudioService) {
+                                try {
+                                    AudioAlarmService.start(
+                                        context = context,
+                                        audioPath = audioAttachment?.localPath,
+                                        reminderText = reminder.text ?: "Rappel",
+                                        reminderId = reminder.id,
+                                        placeName = detectedPlaceName ?: reminder.placeLabel,
+                                        distanceMeters = distanceMeters
+                                    )
+                                    val firedMsg = "Alarme vocale/TTS lancée$distInfo | Vitesse: ${speedKmh.toInt()} km/h$leadTimeMsg"
+                                    appLogger.success("NOTIFICATION_FIRED", firedMsg, reminder.id)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("GeofenceReceiver", "Impossible de démarrer AudioAlarmService: ${e.message}")
                                 }
                             }
                         } else {
-                            // ANNONCE GROUPÉE INTELLIGENTE : Plusieurs rappels sur le même POI physique
-                            val placeLabel = detectedPlaceName ?: "ce commerce"
-                            val itemsSummary = validatedReminders.joinToString(", ") { it.first.text ?: "Rappel" }
-                            val groupedText = "Vous avez ${validatedReminders.size} rappels à proximité de $placeLabel : $itemsSummary"
+                            // ANNONCE GROUPÉE INTELLIGENTE : Plusieurs rappels RÉELLEMENT déclenchés sur le même POI physique
+                            val itemsSummary = actuallyTriggeredReminders.joinToString(", ") { it.first.text ?: "Rappel" }
+                            val groupedText = "Vous avez ${actuallyTriggeredReminders.size} rappels à proximité de $placeLabel : $itemsSummary"
 
-                            val notifier = ReminderNotifier(context)
-
-                            validatedReminders.forEach { (reminder, _) ->
-                                val freshReminder = reminderRepository.getById(reminder.id)
-                                if (freshReminder != null && freshReminder.status == ReminderStatus.ACTIVE) {
-                                    val acquiredInCoordinator = triggerCoordinator.tryAcquireTrigger(reminder.id, cooldownMs)
-                                    val lastTrigger = prefs.getLong("last_trigger_time_${reminder.id}", 0L)
-                                    val isCooldown = !acquiredInCoordinator || ((now - lastTrigger) < cooldownMs)
-                                    if (!isCooldown) {
-                                        prefs.edit().putLong("last_trigger_time_${reminder.id}", now).apply()
-                                        if (reminder.placeCategory != null && !reminder.isRepeating) {
-                                            triggerCoordinator.recordCategoryTrigger(reminder.id, locForDistance, now)
-                                        }
-                                        notifier.showPlaceReminder(
-                                            reminder = reminder,
-                                            detectedPlaceName = placeLabel,
-                                            distanceMeters = distanceMeters,
-                                            poiId = poiId
-                                        )
-                                    }
-                                }
+                            actuallyTriggeredReminders.forEach { (reminder, _) ->
+                                notifier.showPlaceReminder(
+                                    reminder = reminder,
+                                    detectedPlaceName = placeLabel,
+                                    distanceMeters = distanceMeters,
+                                    poiId = poiId
+                                )
                             }
 
                             try {
                                 AudioAlarmService.start(
                                     context = context,
                                     reminderText = groupedText,
-                                    reminderId = validatedReminders.first().first.id,
+                                    reminderId = actuallyTriggeredReminders.first().first.id,
                                     placeName = placeLabel,
                                     distanceMeters = distanceMeters
                                 )
@@ -449,8 +446,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             }
                         }
 
-                        // Post-traitement pour chaque rappel validé (persistance, annulation mutuelle, opportuniste/habitude/fin)
-                        for ((reminder, _) in validatedReminders) {
+                        // Post-traitement pour chaque rappel RÉELLEMENT déclenché (persistance, annulation mutuelle, opportuniste/habitude/fin)
+                        for ((reminder, _) in actuallyTriggeredReminders) {
                             val isOpportunistic = reminder.placeCategory != null && !reminder.isRepeating
                             val updatedReminder = reminder.copy(
                                 placeLabel = detectedPlaceName ?: reminder.placeLabel,
