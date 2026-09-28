@@ -82,7 +82,7 @@ class ContextRelevanceEngineTest {
     }
 
     @Test
-    fun testFixedPlaceRecedingDistant_returnsDiscreetNotif() {
+    fun testFixedPlaceRecedingDistant_returnsSuppress() {
         val fixedReminder = Reminder(
             id = 102L,
             text = "Petit Prince",
@@ -108,8 +108,8 @@ class ContextRelevanceEngineTest {
             recentDistances = recentDistances
         )
 
-        assertEquals(40, evaluation.score)
-        assertEquals(ContextDecision.DISCREET_NOTIF, evaluation.decision)
+        assertEquals(20, evaluation.score)
+        assertEquals(ContextDecision.SUPPRESS, evaluation.decision)
     }
 
     @Test

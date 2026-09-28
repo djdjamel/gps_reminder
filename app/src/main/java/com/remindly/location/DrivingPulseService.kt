@@ -283,8 +283,15 @@ class DrivingPulseService : Service() {
                                 }
                             }
                         } else {
-                            // 2. Rappel par Catégorie (POIs armés ex: 'ph' / pharmacies)
-                            val trackedIds = prefs.getStringSet("geofences_${r.id}", emptySet()) ?: emptySet()
+                            // 2. Rappel par Catégorie (POIs armés et alloués uniquement)
+                            val activeIds = geofenceManager.getActiveGeofenceRequestIds(r.id)
+                            val trackedIds = if (activeIds.isNotEmpty()) {
+                                activeIds
+                            } else {
+                                prefs.getStringSet("active_geofences_${r.id}", null)
+                                    ?: prefs.getStringSet("geofences_${r.id}", emptySet())
+                                    ?: emptySet()
+                            }
                             for (reqId in trackedIds) {
                                 if (reqId.endsWith("_exit_zone") || reqId.endsWith("_stage_dest")) continue
 

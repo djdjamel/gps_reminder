@@ -189,4 +189,41 @@ class ContextualGeofenceSchedulerTest {
         assertFalse(result.allocatedPoiIds.contains(poiIrrelevant.id))
         assertEquals(LinkLifecycleState.CANDIDATE, linkIrrelevant.state)
     }
+
+    @Test
+    fun testNonPoiSlotsBudgetDeduction_respectsDynamicOverrideMaxSlots() {
+        val reminders = (1L..3L).map { id ->
+            Reminder(id = id, text = "Catégorie $id", placeCategory = "cat_$id")
+        }
+        val linksMap = mutableMapOf<Long, List<ReminderPoiLink>>()
+        for (reminder in reminders) {
+            val links = (1..30).map { i ->
+                val poi = poiRegistry.registerOrGetPoi(
+                    provider = PoiProvider.OPEN_STREET_MAP,
+                    providerId = "poi_${reminder.id}_$i",
+                    name = "Magasin ${reminder.id}_$i",
+                    latitude = 36.00 + (reminder.id * 0.1) + (i * 0.001),
+                    longitude = 3.00 + (i * 0.001)
+                )
+                ReminderPoiLink(
+                    reminderId = reminder.id,
+                    poiId = poi.id,
+                    semanticRadiusM = 200f,
+                    contextScore = 80
+                )
+            }
+            linksMap[reminder.id] = links
+        }
+
+        // Supposons 15 slots non-POI réservés (lieux fixes + exit_zones) -> budget POI = 85 - 15 = 70
+        val nonPoiSlots = 15
+        val maxPoiBudget = (85 - nonPoiSlots).coerceAtLeast(10) // 70
+        val result = scheduler.schedule(reminders, linksMap, overrideMaxSlots = maxPoiBudget)
+
+        assertTrue("Les POIs alloués ne doivent pas dépasser le quota dynamique de 70 (obtenu: ${result.slotsUsed})", result.slotsUsed <= 70)
+        assertTrue("Des slots doivent être alloués", result.slotsUsed > 0)
+        assertEquals("slotsUsed doit correspondre à allocatedPoiIds.size", result.allocatedPoiIds.size, result.slotsUsed)
+        assertEquals(100, result.slotsUsed + result.reserveAvailable)
+        assertTrue("La réserve système doit préserver au minimum les 30 slots (obtenu: ${result.reserveAvailable})", result.reserveAvailable >= 30)
+    }
 }

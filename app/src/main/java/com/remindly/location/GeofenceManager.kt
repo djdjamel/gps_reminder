@@ -123,10 +123,14 @@ class GeofenceManager @Inject constructor(
                             Log.i(tag, "addGeofence: $msg")
                             appLogger.i("GEOFENCE_ARMED", msg, reminder.id)
 
-                            registerSingleGeofence(stageReqId, settings.commuteEndLat!!, settings.commuteEndLng!!, 350f, reminder.id)
-
                             val currentTracked = prefs.getStringSet("geofences_${reminder.id}", emptySet()) ?: emptySet()
-                            prefs.edit().putStringSet("geofences_${reminder.id}", currentTracked + stageReqId).apply()
+                            val editor = prefs.edit()
+                            editor.putFloat("place_lat_${stageReqId}", settings.commuteEndLat!!.toFloat())
+                            editor.putFloat("place_lng_${stageReqId}", settings.commuteEndLng!!.toFloat())
+                            editor.putFloat("radius_${stageReqId}", 350f)
+                            editor.putStringSet("geofences_${reminder.id}", currentTracked + stageReqId)
+                            editor.apply()
+                            synchronizeGeofences()
                             return@launch
                         } else {
                             val msg = "Utilisateur déjà à destination (${distM}m). Armement direct des POIs de retour."
@@ -153,6 +157,7 @@ class GeofenceManager @Inject constructor(
                     editor.putString("place_name_${reminder.id}", reminder.placeLabel ?: reminder.text ?: "Lieu fixe")
                     editor.putFloat("place_lat_${reminder.id}", reminder.placeLat.toFloat())
                     editor.putFloat("place_lng_${reminder.id}", reminder.placeLng.toFloat())
+                    editor.putStringSet("geofences_${reminder.id}", setOf(reminder.id.toString()))
                     editor.apply()
 
                     val activityLabel = ActivityTransitionReceiver.getActivityLabel(currentActivity).second
@@ -160,14 +165,7 @@ class GeofenceManager @Inject constructor(
                     Log.d(tag, "addGeofence: $msg")
                     appLogger.i("GEOFENCE_ARMED", msg, reminder.id)
 
-                    registerSingleGeofence(
-                        reminder.id.toString(),
-                        reminder.placeLat,
-                        reminder.placeLng,
-                        wakeRadius,
-                        reminder.id,
-                        responsivenessMs = 0  // Réactivité maximale pour lieu fixe
-                    )
+                    synchronizeGeofences()
                 }
             } catch (t: Throwable) {
                 Log.e(tag, "Exception dans addGeofence: ${t.message}", t)
@@ -303,7 +301,7 @@ class GeofenceManager @Inject constructor(
                         editor.putString("poi_id_${reqId}", poi.id)
                     }
 
-                    // Armement de la Fenêtre Glissante (Rolling Exit Geofence) si recherche autour de position
+                    // Configuration de la Fenêtre Glissante (Rolling Exit Geofence) si recherche autour de position
                     if (searchCenterLat != null && searchCenterLng != null && reminder.categoryRefType != CategoryReferenceType.COMMUTE_ROUTE.id) {
                         val exitReqId = "${reminder.id}_exit_zone"
                         val exitRadiusM = settings.rollingExitRadiusM.toFloat()
@@ -313,50 +311,21 @@ class GeofenceManager @Inject constructor(
                         editor.putFloat("exit_radius_${reminder.id}", exitRadiusM)
                         allTrackedIds.add(exitReqId)
 
-                        val exitGeofence = Geofence.Builder()
-                            .setRequestId(exitReqId)
-                            .setCircularRegion(searchCenterLat, searchCenterLng, exitRadiusM)
-                            .setExpirationDuration(Geofence.NEVER_EXPIRE)
-                            .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_EXIT)
-                            .setNotificationResponsiveness(5000)
-                            .build()
-
-                        val exitRequest = GeofencingRequest.Builder()
-                            .setInitialTrigger(0)
-                            .addGeofence(exitGeofence)
-                            .build()
-
-                        geofencingClient.addGeofences(exitRequest, geofencePendingIntent)
-                            .addOnSuccessListener {
-                                val exitArmedMsg = "Fenêtre glissante armée : Zone tampon de sortie (${exitRadiusM.toInt()}m) autour de (${searchCenterLat}, ${searchCenterLng})"
-                                Log.i(tag, "armCategoryPoIs: $exitArmedMsg")
-                                appLogger.i("ROLLING_ZONE_ARMED", exitArmedMsg, reminder.id)
-                            }
-                            .addOnFailureListener { e ->
-                                Log.e(tag, "ÉCHEC armement exit_zone: ${e.message}", e)
-                            }
-
-                        val exitTracked = TrackedGeofence(
-                            requestId = exitReqId,
-                            poiId = exitReqId,
-                            latitude = searchCenterLat,
-                            longitude = searchCenterLng,
-                            radiusMeters = exitRadiusM,
-                            isExitZone = true
-                        )
-                        actualState = diffEngine.reconcileActualState(actualState, listOf(exitTracked), emptyList())
+                        val exitMsg = "Fenêtre glissante configurée : Zone tampon de sortie (${exitRadiusM.toInt()}m) autour de (${searchCenterLat}, ${searchCenterLng})"
+                        Log.i(tag, "armCategoryPoIs: $exitMsg")
+                        appLogger.i("ROLLING_ZONE_CONFIG", exitMsg, reminder.id)
                     }
 
                     editor.putStringSet("geofences_${reminder.id}", allTrackedIds).apply()
 
-                    // Synchronisation ordonnancée respectant le Hard Cap 85 via DiffEngine
+                    // Synchronisation unifiée respectant le Hard Cap 85 via DiffEngine
                     synchronizeGeofences()
                 } else {
                     val noPoiMsg = "Aucun POI trouvé pour la catégorie ${category.displayName} dans la zone immédiate"
                     Log.w(tag, "ATTENTION: $noPoiMsg")
                     appLogger.w("POI_SEARCH", noPoiMsg, reminder.id)
 
-                    // Armement de la Fenêtre Glissante en veille même sans POI immédiat pour actualisation à la prochaine agglomération
+                    // Configuration de la Fenêtre Glissante en veille même sans POI immédiat pour actualisation à la prochaine agglomération
                     if (searchCenterLat != null && searchCenterLng != null && reminder.categoryRefType != CategoryReferenceType.COMMUTE_ROUTE.id) {
                         val exitReqId = "${reminder.id}_exit_zone"
                         val exitRadiusM = settings.rollingExitRadiusM.toFloat()
@@ -367,28 +336,11 @@ class GeofenceManager @Inject constructor(
                         editor.putFloat("exit_radius_${reminder.id}", exitRadiusM)
                         editor.putStringSet("geofences_${reminder.id}", setOf(exitReqId)).apply()
 
-                        val exitGeofence = Geofence.Builder()
-                            .setRequestId(exitReqId)
-                            .setCircularRegion(searchCenterLat, searchCenterLng, exitRadiusM)
-                            .setExpirationDuration(Geofence.NEVER_EXPIRE)
-                            .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_EXIT)
-                            .setNotificationResponsiveness(5000)
-                            .build()
+                        val exitMsg = "Zone sans commerce immédiat. Fenêtre glissante configurée en veille (${exitRadiusM.toInt()}m) pour actualisation à la prochaine agglomération."
+                        Log.i(tag, "armCategoryPoIs: $exitMsg")
+                        appLogger.i("ROLLING_ZONE_CONFIG", exitMsg, reminder.id)
 
-                        val request = GeofencingRequest.Builder()
-                            .setInitialTrigger(0)
-                            .addGeofences(listOf(exitGeofence))
-                            .build()
-
-                        geofencingClient.addGeofences(request, geofencePendingIntent)
-                            .addOnSuccessListener {
-                                val exitArmedMsg = "Zone sans commerce immédiat. Fenêtre glissante armée en veille (${exitRadiusM.toInt()}m) pour actualisation à la prochaine agglomération."
-                                Log.i(tag, "armCategoryPoIs: $exitArmedMsg")
-                                appLogger.i("ROLLING_ZONE_ARMED", exitArmedMsg, reminder.id)
-                            }
-                            .addOnFailureListener { e ->
-                                Log.e(tag, "Échec armement exit_zone de veille: ${e.message}")
-                            }
+                        synchronizeGeofences()
                     }
                 }
             } catch (t: Throwable) {
@@ -506,6 +458,7 @@ class GeofenceManager @Inject constructor(
         editor.remove("exit_center_lng_$reminderId")
         editor.remove("exit_radius_$reminderId")
         editor.remove("geofences_$reminderId")
+        editor.remove("active_geofences_$reminderId")
         editor.apply()
     }
 
@@ -553,18 +506,109 @@ class GeofenceManager @Inject constructor(
                 linksMap[rem.id] = poiRegistry.getLinksForReminder(rem.id)
             }
 
-            val schedulerResult = scheduler.schedule(activeReminders, linksMap)
+            // Phase 6 : Rafraîchir dynamiquement les contextScores selon la position GPS actuelle
+            try {
+                val currentLoc = fusedLocationClient.lastLocation.await()
+                    ?: fusedLocationClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null).await()
+                if (currentLoc != null) {
+                    val distResults = FloatArray(1)
+                    for ((_, links) in linksMap) {
+                        for (link in links) {
+                            val poi = poiRegistry.getPoi(link.poiId) ?: continue
+                            Location.distanceBetween(
+                                currentLoc.latitude,
+                                currentLoc.longitude,
+                                poi.latitude,
+                                poi.longitude,
+                                distResults
+                            )
+                            val distM = distResults[0]
+                            val score = (100 - (distM / 25f).toInt()).coerceIn(20, 95)
+                            link.contextScore = score
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(tag, "Position non disponible pour rafraîchir contextScores: ${e.message}")
+            }
+
+            val settings = settingsRepository.getSettings()
+            val desiredFixed = mutableMapOf<String, TrackedGeofence>()
+            val desiredStage = mutableMapOf<String, TrackedGeofence>()
+            val desiredExit = mutableMapOf<String, TrackedGeofence>()
+
+            for (rem in activeReminders) {
+                // a) Lieu fixe
+                if (rem.placeCategory == null && rem.placeLat != null && rem.placeLng != null && rem.placeLat != 0.0 && rem.placeLng != 0.0) {
+                    val reqId = rem.id.toString()
+                    val semanticRadius = rem.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
+                    val wakeRadius = prefs.getFloat("wake_radius_${rem.id}", semanticRadius)
+                    desiredFixed[reqId] = TrackedGeofence(
+                        requestId = reqId,
+                        poiId = reqId,
+                        latitude = rem.placeLat,
+                        longitude = rem.placeLng,
+                        radiusMeters = wakeRadius,
+                        isExitZone = false
+                    )
+                }
+
+                val trackedIds = prefs.getStringSet("geofences_${rem.id}", emptySet()) ?: emptySet()
+
+                // b) Étape de retour (stage_dest)
+                val stageReqId = "${rem.id}_stage_dest"
+                if (trackedIds.contains(stageReqId)) {
+                    val stageLat = prefs.getFloat("place_lat_${stageReqId}", Float.NaN)
+                    val stageLng = prefs.getFloat("place_lng_${stageReqId}", Float.NaN)
+                    val stageRadius = prefs.getFloat("radius_${stageReqId}", 350f)
+                    if (!stageLat.isNaN() && !stageLng.isNaN()) {
+                        desiredStage[stageReqId] = TrackedGeofence(
+                            requestId = stageReqId,
+                            poiId = stageReqId,
+                            latitude = stageLat.toDouble(),
+                            longitude = stageLng.toDouble(),
+                            radiusMeters = stageRadius,
+                            isExitZone = false
+                        )
+                    }
+                }
+
+                // c) Fenêtre glissante (exit_zone)
+                val exitReqId = "${rem.id}_exit_zone"
+                if (trackedIds.contains(exitReqId)) {
+                    val exitLat = prefs.getFloat("exit_center_lat_${rem.id}", Float.NaN)
+                    val exitLng = prefs.getFloat("exit_center_lng_${rem.id}", Float.NaN)
+                    val exitRadius = prefs.getFloat("exit_radius_${rem.id}", settings.rollingExitRadiusM.toFloat())
+                    if (!exitLat.isNaN() && !exitLng.isNaN()) {
+                        desiredExit[exitReqId] = TrackedGeofence(
+                            requestId = exitReqId,
+                            poiId = exitReqId,
+                            latitude = exitLat.toDouble(),
+                            longitude = exitLng.toDouble(),
+                            radiusMeters = exitRadius,
+                            isExitZone = true
+                        )
+                    }
+                }
+            }
+
+            // Phase 5 : Réserve réelle de 15 slots pour les POIs (Hard cap total desiredMap <= 85)
+            val nonPoiSlots = desiredFixed.size + desiredStage.size + desiredExit.size
+            val maxPoiBudget = (85 - nonPoiSlots).coerceAtLeast(10)
+
+            val categoryReminders = activeReminders.filter { it.placeCategory != null }
+            val schedulerResult = scheduler.schedule(categoryReminders, linksMap, overrideMaxSlots = maxPoiBudget)
 
             val desiredMap = mutableMapOf<String, TrackedGeofence>()
+            desiredMap.putAll(desiredFixed)
+            desiredMap.putAll(desiredStage)
+            desiredMap.putAll(desiredExit)
+
             for (poiId in schedulerResult.allocatedPoiIds) {
                 val reqId = "geo_${poiId.replace(":", "_").replace("/", "_")}"
                 val tracked = poiRegistry.allocateGeofenceForPoi(poiId, reqId)
                 desiredMap[reqId] = tracked
             }
-
-            // Conserver les zones de sortie actives (exit_zones) dans desiredMap
-            val activeExitZones = actualState.geofences.filterKeys { it.endsWith("_exit_zone") }
-            desiredMap.putAll(activeExitZones)
 
             val desiredState = GeofenceStateSnapshot(desiredMap)
             val plan = diffEngine.computeTransitionPlan(actualState, desiredState)
@@ -579,26 +623,49 @@ class GeofenceManager @Inject constructor(
                 when (op) {
                     is DiffOperation.AddBatch -> {
                         val gmsList = op.geofencesToAdd.map { tracked ->
-                            Geofence.Builder()
-                                .setRequestId(tracked.requestId)
-                                .setCircularRegion(tracked.latitude, tracked.longitude, tracked.radiusMeters)
-                                .setExpirationDuration(Geofence.NEVER_EXPIRE)
-                                .setTransitionTypes(
-                                    Geofence.GEOFENCE_TRANSITION_ENTER or
-                                    Geofence.GEOFENCE_TRANSITION_DWELL or
-                                    Geofence.GEOFENCE_TRANSITION_EXIT
-                                )
-                                .setLoiteringDelay(8000)
-                                .setNotificationResponsiveness(1000)
-                                .build()
+                            if (tracked.isExitZone) {
+                                Geofence.Builder()
+                                    .setRequestId(tracked.requestId)
+                                    .setCircularRegion(tracked.latitude, tracked.longitude, tracked.radiusMeters)
+                                    .setExpirationDuration(Geofence.NEVER_EXPIRE)
+                                    .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_EXIT)
+                                    .setNotificationResponsiveness(5000)
+                                    .build()
+                            } else {
+                                val isFixed = desiredFixed.containsKey(tracked.requestId)
+                                val responsiveness = if (isFixed) 0 else 1000
+                                Geofence.Builder()
+                                    .setRequestId(tracked.requestId)
+                                    .setCircularRegion(tracked.latitude, tracked.longitude, tracked.radiusMeters)
+                                    .setExpirationDuration(Geofence.NEVER_EXPIRE)
+                                    .setTransitionTypes(
+                                        Geofence.GEOFENCE_TRANSITION_ENTER or
+                                        Geofence.GEOFENCE_TRANSITION_DWELL or
+                                        Geofence.GEOFENCE_TRANSITION_EXIT
+                                    )
+                                    .setLoiteringDelay(8000)
+                                    .setNotificationResponsiveness(responsiveness)
+                                    .build()
+                            }
+                        }
+                        val initialTrigger = if (op.geofencesToAdd.all { it.isExitZone }) {
+                            0
+                        } else {
+                            GeofencingRequest.INITIAL_TRIGGER_ENTER or GeofencingRequest.INITIAL_TRIGGER_DWELL
                         }
                         val request = GeofencingRequest.Builder()
-                            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER or GeofencingRequest.INITIAL_TRIGGER_DWELL)
+                            .setInitialTrigger(initialTrigger)
                             .addGeofences(gmsList)
                             .build()
 
                         try {
                             geofencingClient.addGeofences(request, geofencePendingIntent).await()
+                            // Phase 3 : Marquer les géofences confirmées par GMS comme ARMED dans le Registry
+                            op.geofencesToAdd.forEach { tracked ->
+                                if (!tracked.isExitZone && !tracked.requestId.endsWith("_stage_dest") && tracked.requestId != tracked.poiId) {
+                                    poiRegistry.markGeofenceArmed(tracked.requestId)
+                                }
+                            }
                             actualState = diffEngine.reconcileActualState(actualState, op.geofencesToAdd, emptyList())
                             Log.i(tag, "DiffEngine AddBatch: +${op.geofencesToAdd.size} géofences (Total actuel: ${actualState.count}/100)")
                         } catch (e: Exception) {
@@ -608,6 +675,9 @@ class GeofenceManager @Inject constructor(
                     is DiffOperation.RemoveBatch -> {
                         try {
                             geofencingClient.removeGeofences(op.requestIdsToRemove).await()
+                            op.requestIdsToRemove.forEach { reqId ->
+                                poiRegistry.releaseGeofence(reqId)
+                            }
                             actualState = diffEngine.reconcileActualState(actualState, emptyList(), op.requestIdsToRemove)
                             Log.i(tag, "DiffEngine RemoveBatch: -${op.requestIdsToRemove.size} géofences (Total actuel: ${actualState.count}/100)")
                         } catch (e: Exception) {
@@ -617,10 +687,56 @@ class GeofenceManager @Inject constructor(
                 }
             }
 
+            // Sauvegarde de l'ensemble des géofences armées actives pour chaque rappel
+            val editor = prefs.edit()
+            for (rem in activeReminders) {
+                val activeKeys = mutableSetOf<String>()
+                if (actualState.geofences.containsKey(rem.id.toString())) {
+                    activeKeys.add(rem.id.toString())
+                }
+                val stageKey = "${rem.id}_stage_dest"
+                if (actualState.geofences.containsKey(stageKey)) {
+                    activeKeys.add(stageKey)
+                }
+                val exitKey = "${rem.id}_exit_zone"
+                if (actualState.geofences.containsKey(exitKey)) {
+                    activeKeys.add(exitKey)
+                }
+                val linkedPoiIds = poiRegistry.getLinksForReminder(rem.id).map { it.poiId }.toSet()
+                actualState.geofences.forEach { (reqId, tracked) ->
+                    if (linkedPoiIds.contains(tracked.poiId)) {
+                        activeKeys.add(reqId)
+                    }
+                }
+                editor.putStringSet("active_geofences_${rem.id}", activeKeys)
+            }
+            editor.apply()
+
             appLogger.success("GEOFENCE_SYNCHRONIZED", "${actualState.count} géofences matérielles actives (Ordonnancement respecté, réserve disponible: ${100 - actualState.count})")
         } catch (e: Exception) {
             Log.e(tag, "Erreur dans synchronizeGeofences: ${e.message}", e)
         }
+    }
+
+    /**
+     * Retourne l'ensemble des Request IDs actuellement armés et surveillés matériellement.
+     * Si [reminderId] est spécifié, filtre sur les géofences propres à ce rappel.
+     */
+    fun getActiveGeofenceRequestIds(reminderId: Long? = null): Set<String> {
+        if (reminderId == null) {
+            return actualState.geofences.keys
+        }
+        val links = poiRegistry.getLinksForReminder(reminderId)
+        val poiIdsForReminder = links.map { it.poiId }.toSet()
+        val activeForReminder = actualState.geofences.filter { (reqId, tracked) ->
+            reqId == reminderId.toString() ||
+            reqId.startsWith("${reminderId}_") ||
+            poiIdsForReminder.contains(tracked.poiId)
+        }.keys
+        if (activeForReminder.isNotEmpty()) {
+            return activeForReminder
+        }
+        return prefs.getStringSet("active_geofences_$reminderId", emptySet()) ?: emptySet()
     }
 
     fun resetCooldown(reminderId: Long) {

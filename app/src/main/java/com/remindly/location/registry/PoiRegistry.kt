@@ -155,16 +155,30 @@ class PoiRegistry @Inject constructor() {
 
         activeGeofencesByPoi[poiId] = geofence
         activeGeofencesByRequest[requestId] = geofence
-        poi.hardwareStatus = PoiHardwareStatus.ARMED
+        poi.hardwareStatus = PoiHardwareStatus.ALLOCATED
 
-        // Tous les liens rattachés passent au statut ARMED
+        // Les liens rattachés passent au statut SCHEDULED en attente de confirmation matérielle GMS
         linksByPoi[poiId]?.forEach { link ->
-            if (link.state == LinkLifecycleState.CANDIDATE || link.state == LinkLifecycleState.SCHEDULED) {
-                link.state = LinkLifecycleState.ARMED
+            if (link.state == LinkLifecycleState.CANDIDATE) {
+                link.state = LinkLifecycleState.SCHEDULED
             }
         }
 
         return geofence
+    }
+
+    /**
+     * Marque la géofence et ses liens comme effectivement armés suite à la confirmation de Google Play Services.
+     */
+    fun markGeofenceArmed(requestId: String) {
+        val geofence = activeGeofencesByRequest[requestId] ?: return
+        pois[geofence.poiId]?.hardwareStatus = PoiHardwareStatus.ARMED
+
+        linksByPoi[geofence.poiId]?.forEach { link ->
+            if (link.state == LinkLifecycleState.CANDIDATE || link.state == LinkLifecycleState.SCHEDULED) {
+                link.state = LinkLifecycleState.ARMED
+            }
+        }
     }
 
     /**

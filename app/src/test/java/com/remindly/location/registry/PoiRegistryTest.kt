@@ -146,11 +146,19 @@ class PoiRegistryTest {
         assertSame("La troisième allocation doit également retourner la même instance", geofence1, geofence3)
         assertEquals("Toujours exactement 1 géofence matérielle active", 1, registry.getActiveGeofenceCount())
 
-        // Vérification de l'état des liens
+        // Vérification de l'état des liens après allocation (SCHEDULED) puis après armement GMS (ARMED)
         val links = registry.getLinksForPoi(poi.id)
+        links.forEach { link ->
+            assertEquals(LinkLifecycleState.SCHEDULED, link.state)
+        }
+        assertEquals(PoiHardwareStatus.ALLOCATED, poi.hardwareStatus)
+
+        // Confirmation matérielle GMS
+        registry.markGeofenceArmed("geo_ph_1")
         links.forEach { link ->
             assertEquals(LinkLifecycleState.ARMED, link.state)
         }
+        assertEquals(PoiHardwareStatus.ARMED, poi.hardwareStatus)
     }
 
     @Test
@@ -167,6 +175,7 @@ class PoiRegistryTest {
         val linkB = registry.linkReminderToPoi(reminderId = 20L, poiId = poi.id, semanticRadiusM = 250f)
 
         registry.allocateGeofenceForPoi(poiId = poi.id, requestId = "geo_market")
+        registry.markGeofenceArmed("geo_market")
 
         assertEquals(LinkLifecycleState.ARMED, linkA.state)
         assertEquals(LinkLifecycleState.ARMED, linkB.state)
@@ -194,6 +203,8 @@ class PoiRegistryTest {
         registry.linkReminderToPoi(reminderId = 55L, poiId = poi.id, semanticRadiusM = 200f)
 
         registry.allocateGeofenceForPoi(poiId = poi.id, requestId = "geo_bakery")
+        assertEquals(PoiHardwareStatus.ALLOCATED, poi.hardwareStatus)
+        registry.markGeofenceArmed("geo_bakery")
         assertEquals(PoiHardwareStatus.ARMED, poi.hardwareStatus)
         assertEquals(1, registry.getActiveGeofenceCount())
 

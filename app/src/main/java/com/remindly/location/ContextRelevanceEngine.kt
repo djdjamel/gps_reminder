@@ -106,11 +106,11 @@ class ContextRelevanceEngine @Inject constructor(
                     (currentDistanceM ?: 0f) > 300f
 
             if (isClearlyReceding) {
-                factors.add(ScoreFactor("Lieu fixe mais éloignement net déjà engagé", -40))
+                factors.add(ScoreFactor("Lieu fixe : éloignement net déjà engagé (>30m à ${currentDistanceM?.toInt()}m)", -65))
                 return ContextEvaluation(
-                    score = 40,
-                    decision = ContextDecision.DISCREET_NOTIF,
-                    reason = "Éloignement constaté sur lieu fixe",
+                    score = 20,
+                    decision = ContextDecision.SUPPRESS,
+                    reason = "Éloignement net déjà engagé sur lieu fixe",
                     factors = factors
                 )
             }
