@@ -21,16 +21,18 @@ class ReminderNotifier(private val context: Context) {
     fun showPlaceReminder(
         reminder: Reminder,
         detectedPlaceName: String? = null,
-        distanceMeters: Float? = null
+        distanceMeters: Float? = null,
+        poiId: String? = null
     ) {
-        showReminder(reminder, isPlace = true, detectedPlaceName = detectedPlaceName, distanceMeters = distanceMeters)
+        showReminder(reminder, isPlace = true, detectedPlaceName = detectedPlaceName, distanceMeters = distanceMeters, poiId = poiId)
     }
 
     private fun showReminder(
         reminder: Reminder,
         isPlace: Boolean,
         detectedPlaceName: String? = null,
-        distanceMeters: Float? = null
+        distanceMeters: Float? = null,
+        poiId: String? = null
     ) {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -41,6 +43,8 @@ class ReminderNotifier(private val context: Context) {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+
+        val isCategory = reminder.placeCategory != null
 
         // Action Snooze
         val snoozeIntent = Intent(context, NotificationActionReceiver::class.java).apply {
@@ -54,7 +58,7 @@ class ReminderNotifier(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Action Terminer
+        // Action Terminer / C'est fait
         val completeIntent = Intent(context, NotificationActionReceiver::class.java).apply {
             action = NotificationActionReceiver.ACTION_COMPLETE
             putExtra(NotificationActionReceiver.EXTRA_REMINDER_ID, reminder.id)
@@ -65,6 +69,23 @@ class ReminderNotifier(private val context: Context) {
             completeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+
+        // Action Ignorer ce magasin (pour rappel de catégorie opportuniste)
+        val skipPendingIntent = if (isCategory) {
+            val skipIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+                action = NotificationActionReceiver.ACTION_SKIP_POI
+                putExtra(NotificationActionReceiver.EXTRA_REMINDER_ID, reminder.id)
+                if (poiId != null) {
+                    putExtra(NotificationActionReceiver.EXTRA_POI_ID, poiId)
+                }
+            }
+            PendingIntent.getBroadcast(
+                context,
+                reminder.id.toInt() * 10 + 2,
+                skipIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        } else null
 
         val placeInfo = detectedPlaceName ?: reminder.placeLabel
         val channelId = if (isPlace) NotificationChannels.PLACE_CHANNEL_ID else NotificationChannels.TIME_CHANNEL_ID
@@ -96,8 +117,16 @@ class ReminderNotifier(private val context: Context) {
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
-            .addAction(android.R.drawable.ic_popup_sync, "Reporter (+15m)", snoozePendingIntent)
-            .addAction(android.R.drawable.checkbox_on_background, "Terminer", completePendingIntent)
+
+        if (isCategory) {
+            if (skipPendingIntent != null) {
+                builder.addAction(android.R.drawable.ic_menu_close_clear_cancel, "Ignorer ce magasin", skipPendingIntent)
+            }
+            builder.addAction(android.R.drawable.checkbox_on_background, "C'est fait", completePendingIntent)
+        } else {
+            builder.addAction(android.R.drawable.ic_popup_sync, "Reporter (+15m)", snoozePendingIntent)
+            builder.addAction(android.R.drawable.checkbox_on_background, "Terminer", completePendingIntent)
+        }
 
         if (distFormatted != null) {
             builder.setSubText("à $distFormatted")

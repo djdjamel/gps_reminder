@@ -30,6 +30,12 @@ class NotificationActionReceiver : BroadcastReceiver() {
     @Inject
     lateinit var diagnosticTracker: com.remindly.location.DiagnosticLocationTracker
 
+    @Inject
+    lateinit var triggerCoordinator: com.remindly.location.TriggerCoordinator
+
+    @Inject
+    lateinit var poiRegistry: com.remindly.location.registry.PoiRegistry
+
     override fun onReceive(context: Context, intent: Intent) {
         val reminderId = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
         if (reminderId == -1L) return
@@ -40,6 +46,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
             try {
                 when (intent.action) {
                     ACTION_COMPLETE -> {
+                        triggerCoordinator.resetCategoryOpportunity(reminderId)
                         reminderRepository.setStatus(reminderId, ReminderStatus.COMPLETED)
                         geofenceManager.removeGeofence(reminderId)
                         if (diagnosticTracker.isDiagnosticActiveFor(reminderId)) {
@@ -47,6 +54,16 @@ class NotificationActionReceiver : BroadcastReceiver() {
                         }
                         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                         notificationManager.cancel(reminderId.toInt())
+                    }
+                    ACTION_SKIP_POI -> {
+                        val poiId = intent.getStringExtra(EXTRA_POI_ID)
+                        if (poiId != null) {
+                            val links = poiRegistry.getLinksForReminder(reminderId)
+                            links.find { it.poiId == poiId }?.state = com.remindly.location.registry.LinkLifecycleState.SKIPPED
+                        }
+                        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        notificationManager.cancel(reminderId.toInt())
+                        geofenceManager.synchronizeGeofences()
                     }
                     ACTION_SNOOZE -> {
                         reminderRepository.setStatus(reminderId, ReminderStatus.SNOOZED)
@@ -98,8 +115,10 @@ class NotificationActionReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_SNOOZE = "com.remindly.action.SNOOZE"
         const val ACTION_COMPLETE = "com.remindly.action.COMPLETE"
+        const val ACTION_SKIP_POI = "com.remindly.action.SKIP_POI"
         const val ACTION_PLAY_AUDIO = "com.remindly.action.PLAY_AUDIO"
         const val EXTRA_REMINDER_ID = "extra_reminder_id"
+        const val EXTRA_POI_ID = "extra_poi_id"
         const val EXTRA_AUDIO_PATH = "extra_audio_path"
         
         private var mediaPlayer: android.media.MediaPlayer? = null

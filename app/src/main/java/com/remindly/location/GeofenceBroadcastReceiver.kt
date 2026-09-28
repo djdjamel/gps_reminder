@@ -57,6 +57,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     @Inject
     lateinit var vehicleModeManager: VehicleModeManager
 
+    @Inject
+    lateinit var userActivityTracker: UserActivityTracker
+
     override fun onReceive(context: Context, intent: Intent) {
         val geofencingEvent = GeofencingEvent.fromIntent(intent)
         if (geofencingEvent == null) {
@@ -322,6 +325,18 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 continue
                             }
 
+                            val isOpportunisticCategory = reminder.placeCategory != null && !reminder.isRepeating
+                            if (isOpportunisticCategory) {
+                                val currentActivity = userActivityTracker.currentActivity.value
+                                val canTrigger = triggerCoordinator.canTriggerCategoryOpportunity(reminder.id, locForDistance, currentActivity)
+                                if (!canTrigger) {
+                                    val oppMsg = "⏳ [OPPORTUNITY_GUARD] Prochain commerce trop proche (< 300m) ou délai minimal (< 60s) non atteint pour #${reminder.id}"
+                                    android.util.Log.i("GeofenceReceiver", oppMsg)
+                                    appLogger.i("GEOFENCE_WAITING", oppMsg, reminder.id)
+                                    continue
+                                }
+                            }
+
                             link?.state = LinkLifecycleState.CONTEXT_VALIDATED
                             validatedReminders.add(Pair(reminder, evaluation))
                         }
@@ -358,8 +373,16 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
                             if (!isCooldown) {
                                 prefs.edit().putLong("last_trigger_time_${reminder.id}", now).apply()
+                                if (reminder.placeCategory != null && !reminder.isRepeating) {
+                                    triggerCoordinator.recordCategoryTrigger(reminder.id, locForDistance, now)
+                                }
                                 val notifier = ReminderNotifier(context)
-                                notifier.showPlaceReminder(reminder, detectedPlaceName = detectedPlaceName, distanceMeters = distanceMeters)
+                                notifier.showPlaceReminder(
+                                    reminder = reminder,
+                                    detectedPlaceName = detectedPlaceName,
+                                    distanceMeters = distanceMeters,
+                                    poiId = poiId
+                                )
 
                                 val audioAttachment = freshReminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
                                 val shouldStartAudioService = (evaluation.decision == ContextDecision.FULL_ALARM ||
@@ -399,7 +422,15 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                     val isCooldown = !acquiredInCoordinator || ((now - lastTrigger) < cooldownMs)
                                     if (!isCooldown) {
                                         prefs.edit().putLong("last_trigger_time_${reminder.id}", now).apply()
-                                        notifier.showPlaceReminder(reminder, detectedPlaceName = placeLabel, distanceMeters = distanceMeters)
+                                        if (reminder.placeCategory != null && !reminder.isRepeating) {
+                                            triggerCoordinator.recordCategoryTrigger(reminder.id, locForDistance, now)
+                                        }
+                                        notifier.showPlaceReminder(
+                                            reminder = reminder,
+                                            detectedPlaceName = placeLabel,
+                                            distanceMeters = distanceMeters,
+                                            poiId = poiId
+                                        )
                                     }
                                 }
                             }
@@ -418,13 +449,14 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             }
                         }
 
-                        // Post-traitement pour chaque rappel validé (persistance, annulation mutuelle, habitude/fin)
+                        // Post-traitement pour chaque rappel validé (persistance, annulation mutuelle, opportuniste/habitude/fin)
                         for ((reminder, _) in validatedReminders) {
+                            val isOpportunistic = reminder.placeCategory != null && !reminder.isRepeating
                             val updatedReminder = reminder.copy(
                                 placeLabel = detectedPlaceName ?: reminder.placeLabel,
                                 placeLat = targetLat,
                                 placeLng = targetLng,
-                                status = if (reminder.isRepeating) ReminderStatus.ACTIVE else ReminderStatus.COMPLETED
+                                status = if (isOpportunistic || reminder.isRepeating) ReminderStatus.ACTIVE else ReminderStatus.COMPLETED
                             )
                             reminderRepository.save(updatedReminder)
 
@@ -436,7 +468,21 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 appLogger.i("MUTUAL_CANCELLATION", cancelMsg, reminder.id)
                             }
 
-                            if (reminder.isRepeating) {
+                            if (isOpportunistic) {
+                                // Mode Catégorie Opportuniste :
+                                // Le rappel reste ACTIVE. Le lien du POI déclenché passe en ALERTED (sourdine).
+                                if (poiId != null) {
+                                    val links = poiRegistry.getLinksForReminder(reminder.id)
+                                    links.find { it.poiId == poiId }?.state = LinkLifecycleState.ALERTED
+                                }
+                                val oppMsg = "🎯 Opportunité présentée pour #${reminder.id} ('${detectedPlaceName ?: reminder.placeLabel}'). Rappel maintenu ACTIF pour les prochains commerces."
+                                android.util.Log.i("GeofenceReceiver", oppMsg)
+                                appLogger.success("OPPORTUNITY_ALERTED", oppMsg, reminder.id)
+
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    geofenceManager.synchronizeGeofences()
+                                }
+                            } else if (reminder.isRepeating) {
                                 // Mode HABITUDE / RÉPÉTITIF :
                                 if (targetLat != null && targetLng != null) {
                                     diagnosticTracker.startLiveZoneTracking(context, updatedReminder)

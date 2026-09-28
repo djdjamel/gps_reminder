@@ -125,7 +125,7 @@ class ContextualGeofenceScheduler @Inject constructor(
         // 2. ÉTAGE 1 : Fairness Floor (Couverture minimale dynamique par rappel)
         val remindersWithCandidates = activeReminders.filter { reminder ->
             val links = linksByReminder[reminder.id] ?: emptyList()
-            links.any { it.contextScore > 0 }
+            links.any { it.contextScore > 0 && it.state != LinkLifecycleState.COMPLETED && it.state != LinkLifecycleState.ALERTED && it.state != LinkLifecycleState.SKIPPED }
         }.sortedWith(
             compareByDescending<Reminder> { ReminderPriority.fromReminder(it).weight }
                 .thenByDescending { reminder ->
@@ -144,7 +144,7 @@ class ContextualGeofenceScheduler @Inject constructor(
 
         for (reminder in remindersWithCandidates) {
             val candidateLinks = linksByReminder[reminder.id]
-                ?.filter { it.contextScore > 0 && it.state != LinkLifecycleState.COMPLETED }
+                ?.filter { it.contextScore > 0 && it.state != LinkLifecycleState.COMPLETED && it.state != LinkLifecycleState.ALERTED && it.state != LinkLifecycleState.SKIPPED }
                 ?.sortedByDescending { it.allocationScore }
                 ?: emptyList()
 
@@ -172,7 +172,7 @@ class ContextualGeofenceScheduler @Inject constructor(
         if (remainingCapacity > 0) {
             // Rassemblement de tous les liens restants non encore planifiés
             val remainingLinks = linksByReminder.values.flatten()
-                .filter { it.state != LinkLifecycleState.SCHEDULED && it.state != LinkLifecycleState.COMPLETED && it.contextScore > 0 }
+                .filter { it.state != LinkLifecycleState.SCHEDULED && it.state != LinkLifecycleState.COMPLETED && it.state != LinkLifecycleState.ALERTED && it.state != LinkLifecycleState.SKIPPED && it.contextScore > 0 }
                 .sortedByDescending { it.allocationScore }
 
             for (link in remainingLinks) {

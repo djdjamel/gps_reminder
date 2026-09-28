@@ -7,7 +7,8 @@ enum class LinkLifecycleState {
     GEOFENCE_ENTERED,   // Franchissement matériel de la géofence détecté par Android
     WAITING,            // Réveillé par le hardware mais pas encore au rayon sémantique ou moment prématuré
     CONTEXT_VALIDATED,  // Validé par le ContextEngine (score et conditions remplis)
-    ALERTED,            // Alerte notifiée / TTS joué à l'utilisateur
+    ALERTED,            // Alerte notifiée / TTS joué à l'utilisateur (mis en sourdine pour la session)
+    SKIPPED,            // Ignoré explicitement par l'utilisateur via l'action de notification
     COMPLETED,          // Intention satisfaite et marquée terminée par l'utilisateur
     SUPPRESSED_NOW      // Rejeté temporairement dans ce contexte précis (ex: cap opposé, vitesse autoroute)
 }

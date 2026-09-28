@@ -61,6 +61,9 @@ class DrivingPulseService : Service() {
     @Inject
     lateinit var triggerCoordinator: TriggerCoordinator
 
+    @Inject
+    lateinit var poiRegistry: com.remindly.location.registry.PoiRegistry
+
     private val lastDistanceByReminder = mutableMapOf<String, DistanceSample>()
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -398,6 +401,20 @@ class DrivingPulseService : Service() {
         val now = System.currentTimeMillis()
         val cooldownMs = settings.geofenceCooldownSeconds * 1000L
 
+        val isOpportunisticCategory = reminder.placeCategory != null && !reminder.isRepeating
+
+        if (isOpportunisticCategory) {
+            val canTrigger = triggerCoordinator.canTriggerCategoryOpportunity(
+                reminderId = reminderId,
+                currentLocation = loc,
+                activityType = com.google.android.gms.location.DetectedActivity.IN_VEHICLE
+            )
+            if (!canTrigger) {
+                Log.i(TAG, "Déclenchement Pulse Conduite opportuniste ignoré pour #$reminderId : garde adaptatif (temps < 60s ou distance < 300m) actif.")
+                return
+            }
+        }
+
         // Double verrouillage atomique thread-safe : TriggerCoordinator + SharedPreferences
         val acquiredInCoordinator = triggerCoordinator.tryAcquireTrigger(reminderId, cooldownMs)
         val lastTrigger = prefs.getLong("last_trigger_time_${reminderId}", 0L)
@@ -409,6 +426,9 @@ class DrivingPulseService : Service() {
         }
 
         prefs.edit().putLong("last_trigger_time_${reminderId}", now).apply()
+        if (isOpportunisticCategory) {
+            triggerCoordinator.recordCategoryTrigger(reminderId, loc, now)
+        }
 
         val placeName = poiName ?: reminder.placeLabel ?: reminder.text ?: "Lieu"
         val speedKmh = if (loc.hasSpeed()) (loc.speed * 3.6f) else 0f
@@ -424,10 +444,12 @@ class DrivingPulseService : Service() {
         val notifier = ReminderNotifier(this@DrivingPulseService)
         appLogger.success("GEOFENCE_TRIGGERED", triggerMsg, reminderId)
 
+        val poiId = if (poiReqId != null) prefs.getString("poi_id_$poiReqId", null) else null
         notifier.showPlaceReminder(
             reminder = reminder,
             detectedPlaceName = placeName,
-            distanceMeters = distanceMeters
+            distanceMeters = distanceMeters,
+            poiId = poiId
         )
 
         val audioAttachment = reminder.attachments.firstOrNull { it.type == AttachmentType.AUDIO }
@@ -462,8 +484,27 @@ class DrivingPulseService : Service() {
                 appLogger.i("MUTUAL_CANCELLATION", cancelMsg, reminderId)
             }
 
-            // Mode standard (non répétitif) : marquer COMPLETED et désarmer toutes les zones
-            if (!reminder.isRepeating) {
+            // Clôture différenciée : Opportuniste (reste ACTIVE) vs Lieu fixe unique (COMPLETED)
+            if (isOpportunisticCategory) {
+                if (poiId != null) {
+                    val links = poiRegistry.getLinksForReminder(reminderId)
+                    links.find { it.poiId == poiId }?.state = com.remindly.location.registry.LinkLifecycleState.ALERTED
+                }
+                val oppMsg = "🎯 Opportunité présentée par Pulse Conduite pour #${reminder.id} ('$placeName'). Rappel maintenu ACTIF."
+                Log.i(TAG, oppMsg)
+                appLogger.success("OPPORTUNITY_ALERTED", oppMsg, reminderId)
+
+                serviceScope.launch {
+                    val updated = reminder.copy(
+                        placeLabel = placeName,
+                        placeLat = poiLat ?: reminder.placeLat,
+                        placeLng = poiLng ?: reminder.placeLng,
+                        status = ReminderStatus.ACTIVE
+                    )
+                    reminderRepository.save(updated)
+                    geofenceManager.synchronizeGeofences()
+                }
+            } else if (!reminder.isRepeating) {
                 val completeMsg = "Rappel non répétitif #${reminder.id} ('$placeName') validé par Pulse Conduite et marqué TERMINÉ. Désarmement total."
                 Log.i(TAG, completeMsg)
                 appLogger.i("REMINDER_COMPLETED", completeMsg, reminderId)

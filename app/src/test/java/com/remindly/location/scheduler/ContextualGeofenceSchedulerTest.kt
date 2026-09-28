@@ -226,4 +226,26 @@ class ContextualGeofenceSchedulerTest {
         assertEquals(100, result.slotsUsed + result.reserveAvailable)
         assertTrue("La réserve système doit préserver au minimum les 30 slots (obtenu: ${result.reserveAvailable})", result.reserveAvailable >= 30)
     }
+
+    @Test
+    fun testAlertedAndSkippedLinks_areExcludedFromScheduling() {
+        val reminder = Reminder(id = 1L, text = "Pharmacies", placeCategory = "pharmacy")
+
+        val poiFresh = poiRegistry.registerOrGetPoi(PoiProvider.OPEN_STREET_MAP, "fresh", "Pharmacie Neuve", 36.7, 3.0)
+        val poiAlerted = poiRegistry.registerOrGetPoi(PoiProvider.OPEN_STREET_MAP, "alerted", "Pharmacie Déjà Alertée", 36.71, 3.01)
+        val poiSkipped = poiRegistry.registerOrGetPoi(PoiProvider.OPEN_STREET_MAP, "skipped", "Pharmacie Ignorée", 36.72, 3.02)
+
+        val linkFresh = ReminderPoiLink(reminderId = 1L, poiId = poiFresh.id, semanticRadiusM = 200f, contextScore = 80, state = LinkLifecycleState.CANDIDATE)
+        val linkAlerted = ReminderPoiLink(reminderId = 1L, poiId = poiAlerted.id, semanticRadiusM = 200f, contextScore = 95, state = LinkLifecycleState.ALERTED)
+        val linkSkipped = ReminderPoiLink(reminderId = 1L, poiId = poiSkipped.id, semanticRadiusM = 200f, contextScore = 95, state = LinkLifecycleState.SKIPPED)
+
+        val linksMap = mapOf(1L to listOf(linkFresh, linkAlerted, linkSkipped))
+        val result = scheduler.schedule(listOf(reminder), linksMap)
+
+        assertEquals("Seul le POI non alerté et non ignoré doit être alloué", 1, result.slotsUsed)
+        assertTrue(result.allocatedPoiIds.contains(poiFresh.id))
+        assertFalse("Le POI ALERTED ne doit plus consommer de slot physique", result.allocatedPoiIds.contains(poiAlerted.id))
+        assertFalse("Le POI SKIPPED ne doit plus consommer de slot physique", result.allocatedPoiIds.contains(poiSkipped.id))
+    }
 }
+
