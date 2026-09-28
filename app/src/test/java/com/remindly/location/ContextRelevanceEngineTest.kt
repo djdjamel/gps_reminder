@@ -339,4 +339,34 @@ class ContextRelevanceEngineTest {
 
         assertEquals("À proximité immédiate (<=200m), le lieu fixe délibéré reste garanti", ContextDecision.FULL_ALARM, evaluation.decision)
     }
+
+    @Test
+    fun testFixedPlaceHighSpeedTransit_returnsWaitAndMonitor() {
+        val hotelReminder = Reminder(
+            id = 304L,
+            text = "Hôtel des Pins",
+            triggerType = TriggerType.PLACE,
+            placeLat = 35.5600,
+            placeLng = 6.1400,
+            placeRadiusM = 450f,
+            placeCategory = null,
+            status = ReminderStatus.ACTIVE
+        )
+
+        // Véhicule approchant à 75 km/h à 350m (pas encore ralenti)
+        val evaluation = engine.evaluate(
+            reminder = hotelReminder,
+            currentLocation = null,
+            targetLat = 35.5600,
+            targetLng = 6.1400,
+            currentDistanceM = 350f,
+            overrideBearing = 0f,
+            overrideSpeedKmh = 75f,
+            overrideCurrentLat = 35.5560,
+            overrideCurrentLng = 6.1400
+        )
+
+        assertEquals("À vitesse élevée (>65 km/h) en approche, doit passer en WAIT_AND_MONITOR", ContextDecision.WAIT_AND_MONITOR, evaluation.decision)
+        assertEquals(40, evaluation.score)
+    }
 }

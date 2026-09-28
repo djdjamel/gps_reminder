@@ -6,6 +6,7 @@ import android.content.Intent
 import com.remindly.data.repo.ReminderRepository
 import com.remindly.domain.model.AttachmentType
 import com.remindly.domain.model.ReminderStatus
+import com.remindly.domain.model.RepeatRule
 import com.remindly.media.AudioAlarmService
 import com.remindly.notify.ReminderNotifier
 import dagger.hilt.android.AndroidEntryPoint
@@ -58,9 +59,6 @@ class AlarmReceiver : BroadcastReceiver() {
                     android.util.Log.i("AlarmReceiver", deadlineMsg)
                     appLogger.i("DEADLINE_REACHED", deadlineMsg, reminderId)
                     geofenceManager.removeGeofence(reminderId)
-                    if (!reminder.isRepeating) {
-                        reminderRepository.setStatus(reminderId, ReminderStatus.COMPLETED)
-                    }
                 }
 
                 // 3. Afficher la notification ou jouer l'audio
@@ -85,6 +83,33 @@ class AlarmReceiver : BroadcastReceiver() {
                     // Rappel standard : notification classique
                     val notifier = ReminderNotifier(context)
                     notifier.showTimeReminder(reminder)
+                }
+
+                // 4. Replanification récurrente ou passage en COMPLETED
+                val rule = reminder.repeatRule ?: RepeatRule.NONE
+                if (reminder.isRepeating && rule != RepeatRule.NONE) {
+                    val nextTime = NextOccurrenceCalculator.calculateNext(
+                        currentTimeMillis = System.currentTimeMillis(),
+                        triggerTimeMillis = reminder.triggerTimeMillis ?: System.currentTimeMillis(),
+                        repeatRule = rule,
+                        repeatIntervalMin = reminder.repeatIntervalMin,
+                        repeatDaysMask = reminder.repeatDaysMask
+                    )
+                    if (nextTime != null) {
+                        val updated = reminder.copy(triggerTimeMillis = nextTime, status = ReminderStatus.ACTIVE)
+                        reminderRepository.save(updated)
+                        alarmScheduler.schedule(updated, nextTime)
+                        if (hasPlace) {
+                            geofenceManager.rearmGeofence(updated)
+                        }
+                        val rescheduleMsg = "🔁 Rappel récurrent #${reminder.id} replanifié pour le ${java.util.Date(nextTime)}"
+                        android.util.Log.i("AlarmReceiver", rescheduleMsg)
+                        appLogger.i("ALARM_RESCHEDULED", rescheduleMsg, reminderId)
+                    } else {
+                        reminderRepository.setStatus(reminderId, ReminderStatus.COMPLETED)
+                    }
+                } else {
+                    reminderRepository.setStatus(reminderId, ReminderStatus.COMPLETED)
                 }
             } finally {
                 pendingResult.finish()

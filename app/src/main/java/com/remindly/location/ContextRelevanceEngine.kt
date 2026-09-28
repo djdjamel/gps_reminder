@@ -89,7 +89,18 @@ class ContextRelevanceEngine @Inject constructor(
                 }
             }
 
-            // 2. Si on a des échantillons de distance récents montrant qu'on s'éloigne déjà nettement (>30m)
+            // 2. Si la vitesse est trop élevée pour un arrêt immédiat (> 65 km/h) au-delà de 100m
+            if ((speedKmh ?: 0f) > 65f && (currentDistanceM ?: 0f) > 100f) {
+                factors.add(ScoreFactor("Vitesse transitoire élevée sur lieu fixe (${speedKmh?.toInt()} km/h)", -45))
+                return ContextEvaluation(
+                    score = 40,
+                    decision = ContextDecision.WAIT_AND_MONITOR,
+                    reason = "Vitesse transitoire élevée (${speedKmh?.toInt()} km/h) : attente de décélération",
+                    factors = factors
+                )
+            }
+
+            // 3. Si on a des échantillons de distance récents montrant qu'on s'éloigne déjà nettement (>30m)
             val isClearlyReceding = recentDistances.size >= 2 &&
                     (recentDistances.last().distanceM - recentDistances.first().distanceM) > 30f &&
                     (currentDistanceM ?: 0f) > 300f

@@ -62,7 +62,7 @@ class CommuteRouteViewModel @Inject constructor(
 
     private val placesClient by lazy {
         if (!Places.isInitialized()) {
-            Places.initialize(context, "AIzaSyBCv_6Tt9fu9eLQDwIHiFSYjDiRqZkC8eA")
+            Places.initialize(context, com.remindly.BuildConfig.MAPS_API_KEY.ifEmpty { "AIzaSyBCv_6Tt9fu9eLQDwIHiFSYjDiRqZkC8eA" })
         }
         Places.createClient(context)
     }

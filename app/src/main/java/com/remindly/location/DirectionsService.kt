@@ -24,7 +24,7 @@ data class RouteOption(
 @Singleton
 class DirectionsService @Inject constructor() {
 
-    private val apiKey = "AIzaSyBCv_6Tt9fu9eLQDwIHiFSYjDiRqZkC8eA"
+    private val apiKey = com.remindly.BuildConfig.MAPS_API_KEY.ifEmpty { "AIzaSyBCv_6Tt9fu9eLQDwIHiFSYjDiRqZkC8eA" }
 
     suspend fun getRoutes(
         startLat: Double,

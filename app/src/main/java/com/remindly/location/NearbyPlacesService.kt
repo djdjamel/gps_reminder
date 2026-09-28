@@ -31,7 +31,7 @@ data class NearbyPlace(
 class NearbyPlacesService @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-    private val apiKey = "AIzaSyBCv_6Tt9fu9eLQDwIHiFSYjDiRqZkC8eA"
+    private val apiKey = com.remindly.BuildConfig.MAPS_API_KEY.ifEmpty { "AIzaSyBCv_6Tt9fu9eLQDwIHiFSYjDiRqZkC8eA" }
     private val tag = "NearbyPlacesService"
 
     /**

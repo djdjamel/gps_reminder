@@ -11,6 +11,8 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
 
+import com.remindly.domain.model.RepeatRule
+
 @HiltWorker
 class RescheduleAlarmsWorker @AssistedInject constructor(
     @Assisted context: Context,
@@ -37,7 +39,24 @@ class RescheduleAlarmsWorker @AssistedInject constructor(
                     // Notifier en retard pour les rappels échus pendant l'arrêt du téléphone
                     val notifier = com.remindly.notify.ReminderNotifier(applicationContext)
                     notifier.showTimeReminder(reminder)
-                    if (reminder.triggerType == TriggerType.TIME) {
+
+                    val rule = reminder.repeatRule ?: RepeatRule.NONE
+                    if (reminder.isRepeating && rule != RepeatRule.NONE) {
+                        val nextTime = NextOccurrenceCalculator.calculateNext(
+                            currentTimeMillis = now,
+                            triggerTimeMillis = triggerTime,
+                            repeatRule = rule,
+                            repeatIntervalMin = reminder.repeatIntervalMin,
+                            repeatDaysMask = reminder.repeatDaysMask
+                        )
+                        if (nextTime != null) {
+                            val updated = reminder.copy(triggerTimeMillis = nextTime, status = ReminderStatus.ACTIVE)
+                            reminderRepository.save(updated)
+                            alarmScheduler.schedule(updated, nextTime)
+                        } else if (reminder.triggerType == TriggerType.TIME) {
+                            reminderRepository.setStatus(reminder.id, ReminderStatus.COMPLETED)
+                        }
+                    } else if (reminder.triggerType == TriggerType.TIME) {
                         reminderRepository.setStatus(reminder.id, ReminderStatus.COMPLETED)
                     }
                 }

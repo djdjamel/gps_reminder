@@ -10,6 +10,9 @@ data class Reminder(
     // Trigger temporel
     val triggerType: TriggerType = TriggerType.NONE,
     val triggerTimeMillis: Long? = null,
+    val repeatRule: RepeatRule? = null,
+    val repeatIntervalMin: Int? = null,
+    val repeatDaysMask: Int? = null,
     // Trigger géographique
     val placeLat: Double? = null,
     val placeLng: Double? = null,

@@ -270,8 +270,12 @@ class DrivingPulseService : Service() {
                                             recentDistances = sampleList,
                                             overrideActivity = com.google.android.gms.location.DetectedActivity.IN_VEHICLE
                                         )
-                                        if (evaluation.decision != ContextDecision.SUPPRESS) {
+                                        val isConfirmed = evaluation.decision == ContextDecision.FULL_ALARM ||
+                                            (evaluation.decision == ContextDecision.DISCREET_NOTIF && evaluation.score >= 45)
+                                        if (isConfirmed) {
                                             triggerReminderFromPulse(r, dist, loc, settings, evaluation)
+                                        } else if (evaluation.decision == ContextDecision.WAIT_AND_MONITOR) {
+                                            Log.d(TAG, "En attente de confirmation contextuelle (${evaluation.reason}, Score: ${evaluation.score}pts) pour ${r.text}")
                                         } else {
                                             Log.d(TAG, "Déclenchement supprimé par ContextEngine: ${evaluation.reason} pour ${r.text}")
                                         }
@@ -314,7 +318,9 @@ class DrivingPulseService : Service() {
                                                 recentDistances = sampleList,
                                                 overrideActivity = com.google.android.gms.location.DetectedActivity.IN_VEHICLE
                                             )
-                                            if (evaluation.decision != ContextDecision.SUPPRESS) {
+                                            val isConfirmed = evaluation.decision == ContextDecision.FULL_ALARM ||
+                                                (evaluation.decision == ContextDecision.DISCREET_NOTIF && evaluation.score >= 45)
+                                            if (isConfirmed) {
                                                 triggerReminderFromPulse(
                                                     reminder = r,
                                                     distanceMeters = dist,
@@ -327,6 +333,8 @@ class DrivingPulseService : Service() {
                                                     poiReqId = reqId
                                                 )
                                                 break // Éviter de déclencher 2 POIs sur le même pulse
+                                            } else if (evaluation.decision == ContextDecision.WAIT_AND_MONITOR) {
+                                                Log.d(TAG, "POI '$poiName' en attente de confirmation (${evaluation.reason}, Score: ${evaluation.score}pts)")
                                             } else {
                                                 Log.d(TAG, "POI '$poiName' filtré par ContextEngine: ${evaluation.reason}")
                                             }

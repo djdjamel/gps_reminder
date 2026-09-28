@@ -161,8 +161,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             android.util.Log.i("GeofenceReceiver", exitMsg)
                             appLogger.i("ROLLING_ZONE_EXIT", exitMsg, reminderId)
 
-                            // Désarmement de l'ancienne grappe et armement de la nouvelle grappe avec la position actuelle
-                            geofenceManager.removeGeofence(reminderId)
+                            // Désarmement séquentiel garanti de l'ancienne grappe avant l'armement de la nouvelle grappe
+                            geofenceManager.removeGeofenceSuspend(reminderId)
                             geofenceManager.armCategoryPoIs(reminder)
                             continue
                         }
@@ -270,6 +270,22 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             val configuredSemanticRadius = link?.semanticRadiusM
                                 ?: prefs.getFloat("semantic_radius_${reminder.id}", reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat())
 
+                            // Garde-fou précision GPS : si l'incertitude dépasse le seuil proportionnel (> 30% du rayon), passer en attente et lancer le Pulse
+                            if (locForDistance != null && locForDistance.hasAccuracy()) {
+                                val isAccuracyAcceptable = GeofenceFilterUtils.evaluateAccuracy(
+                                    accuracyM = locForDistance.accuracy,
+                                    radiusM = configuredSemanticRadius
+                                )
+                                if (!isAccuracyAcceptable) {
+                                    link?.state = LinkLifecycleState.WAITING
+                                    val accMsg = "⏳ [ACCURACY_WAIT] Précision GPS transitoirement faible (±${locForDistance.accuracy.toInt()}m > 30% de ${configuredSemanticRadius.toInt()}m) pour '${reminder.text}' -> Démarrage de l'Adaptive Pulse"
+                                    android.util.Log.w("GeofenceReceiver", accMsg)
+                                    appLogger.i("GEOFENCE_WAITING", accMsg, reminder.id)
+                                    vehicleModeManager.startPulseForApproach("Attente d'un fix GPS précis (±${locForDistance.accuracy.toInt()}m)")
+                                    continue
+                                }
+                            }
+
                             if (distanceMeters == null || distanceMeters > configuredSemanticRadius) {
                                 link?.state = LinkLifecycleState.WAITING
                                 link?.retryDistanceM = configuredSemanticRadius
@@ -294,6 +310,15 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                                 val filterMsg = "🚫 Alerte filtrée (${evaluation.reason}) pour '${detectedPlaceName ?: reminder.placeLabel ?: "Commerce"}'"
                                 android.util.Log.w("GeofenceReceiver", filterMsg)
                                 appLogger.i("GEOFENCE_FILTERED", filterMsg, reminder.id)
+                                continue
+                            }
+
+                            if (evaluation.decision == ContextDecision.WAIT_AND_MONITOR) {
+                                link?.state = LinkLifecycleState.WAITING
+                                val waitMsg = "⏳ [CONTEXT_WAIT] En attente de confirmation contextuelle (${evaluation.reason}, Score: ${evaluation.score}pts) pour '${detectedPlaceName ?: reminder.placeLabel ?: "Lieu"}' -> Maintien de l'Adaptive Pulse"
+                                android.util.Log.i("GeofenceReceiver", waitMsg)
+                                appLogger.i("GEOFENCE_WAITING", waitMsg, reminder.id)
+                                vehicleModeManager.startPulseForApproach("Attente confirmation contextuelle (Score: ${evaluation.score}pts)")
                                 continue
                             }
 
