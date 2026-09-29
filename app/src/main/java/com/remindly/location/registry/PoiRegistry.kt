@@ -118,6 +118,9 @@ class PoiRegistry @Inject constructor() {
                 semanticRadiusM = semanticRadiusM
             )
         }
+        if (link.state == LinkLifecycleState.COMPLETED) {
+            link.state = LinkLifecycleState.CANDIDATE
+        }
 
         val poiLinks = linksByPoi.getOrPut(poiId) { ConcurrentHashMap.newKeySet() }
         poiLinks.add(link)
@@ -196,6 +199,16 @@ class PoiRegistry @Inject constructor() {
     fun getLinksForPoi(poiId: String): List<ReminderPoiLink> = linksByPoi[poiId]?.toList() ?: emptyList()
 
     fun getLinksForReminder(reminderId: Long): List<ReminderPoiLink> = linksByReminder[reminderId]?.values?.toList() ?: emptyList()
+
+    /**
+     * Supprime définitivement les liaisons d'un rappel (par exemple lors de sa suppression ou complétion finale).
+     */
+    fun unregisterReminder(reminderId: Long) {
+        val removedLinks = linksByReminder.remove(reminderId) ?: return
+        for ((poiId, link) in removedLinks) {
+            linksByPoi[poiId]?.remove(link)
+        }
+    }
 
     fun getActiveGeofenceForPoi(poiId: String): TrackedGeofence? = activeGeofencesByPoi[poiId]
 

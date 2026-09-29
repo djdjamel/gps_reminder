@@ -211,17 +211,34 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                         if (geofenceTransition == Geofence.GEOFENCE_TRANSITION_EXIT) {
                             val placeName = detectedPlaceName ?: "Lieu"
                             remindersToProcess.forEach { (reminder, link) ->
-                                link?.state = LinkLifecycleState.ARMED
-                                val exitMsg = "🚗 Sortie de zone détectée pour '$placeName' (Rappel #${reminder.id}). Réarmement automatique pour le prochain passage."
-                                android.util.Log.i("GeofenceReceiver", exitMsg)
-                                appLogger.i("GEOFENCE_EXIT", exitMsg, reminder.id)
+                                val isCategoryReminder = reminder.placeCategory != null
 
-                                if (diagnosticTracker.isDiagnosticActiveFor(reminder.id)) {
-                                    diagnosticTracker.stopDiagnostic(context)
-                                }
-                                geofenceManager.resetCooldown(reminder.id)
-                                if (reminder.status == ReminderStatus.ACTIVE) {
-                                    geofenceManager.rearmGeofence(reminder)
+                                if (isCategoryReminder) {
+                                    // Pour un rappel de catégorie opportuniste : la sortie d'un commerce individuel
+                                    // ne doit JAMAIS réarmer tout le rappel ni relancer de recherche POI.
+                                    // Le renouvellement de grappe géographique est réservé exclusivement à la Rolling Exit Zone (900m).
+                                    val exitMsg = "🚗 Sortie de la zone du commerce '$placeName' pour rappel #${reminder.id}. Surveillance locale relâchée."
+                                    android.util.Log.i("GeofenceReceiver", exitMsg)
+                                    appLogger.i("POI_EXIT", exitMsg, reminder.id)
+
+                                    // Si le lien n'a pas été alerté ni ignoré, il redevient CANDIDATE pour le prochain ordonnancement
+                                    if (link != null && link.state != LinkLifecycleState.ALERTED && link.state != LinkLifecycleState.SKIPPED) {
+                                        link.state = LinkLifecycleState.CANDIDATE
+                                    }
+                                } else {
+                                    // Pour un rappel à lieu fixe unique : réarmement classique pour la prochaine visite
+                                    link?.state = LinkLifecycleState.ARMED
+                                    val exitMsg = "🚗 Sortie de zone détectée pour '$placeName' (Rappel #${reminder.id}). Réarmement automatique pour le prochain passage."
+                                    android.util.Log.i("GeofenceReceiver", exitMsg)
+                                    appLogger.i("GEOFENCE_EXIT", exitMsg, reminder.id)
+
+                                    if (diagnosticTracker.isDiagnosticActiveFor(reminder.id)) {
+                                        diagnosticTracker.stopDiagnostic(context)
+                                    }
+                                    geofenceManager.resetCooldown(reminder.id)
+                                    if (reminder.status == ReminderStatus.ACTIVE) {
+                                        geofenceManager.rearmGeofence(reminder)
+                                    }
                                 }
                             }
                             continue

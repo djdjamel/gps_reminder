@@ -483,8 +483,22 @@ class GeofenceManager @Inject constructor(
         try {
             geofencingClient.removeGeofences(idsToRemove).await()
             cleanupPrefsForReminder(reminderId, idsToRemove)
+            val reminder = reminderRepositoryProvider.get().getById(reminderId)
+            val isPermanentlyInactive = reminder == null || reminder.status == com.remindly.domain.model.ReminderStatus.COMPLETED
             val links = poiRegistry.getLinksForReminder(reminderId)
-            links.forEach { it.state = LinkLifecycleState.COMPLETED }
+            if (isPermanentlyInactive) {
+                links.forEach { it.state = LinkLifecycleState.COMPLETED }
+                poiRegistry.unregisterReminder(reminderId)
+            } else {
+                links.forEach { link ->
+                    // On préserve les POIs déjà notifiés (ALERTED) ou ignorés (SKIPPED).
+                    // Les liens qui étaient planifiés ou armés redeviennent CANDIDATE pour rester
+                    // éligibles lors des futures passes de l'ordonnanceur (ContextualGeofenceScheduler).
+                    if (link.state == LinkLifecycleState.ARMED || link.state == LinkLifecycleState.SCHEDULED) {
+                        link.state = LinkLifecycleState.CANDIDATE
+                    }
+                }
+            }
             Log.d(tag, "removeGeofenceSuspend: Géofences du rappel $reminderId supprimées (${idsToRemove.size} IDs)")
             appLogger.i("GEOFENCE_CLEANUP", "Géofences du rappel $reminderId désarmées (${idsToRemove.size} IDs)", reminderId)
         } catch (e: Exception) {
