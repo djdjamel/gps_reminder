@@ -34,34 +34,55 @@ class NearbyPlacesService @Inject constructor(
     private val apiKey = com.remindly.BuildConfig.MAPS_API_KEY.ifEmpty { "AIzaSyBCv_6Tt9fu9eLQDwIHiFSYjDiRqZkC8eA" }
     private val tag = "NearbyPlacesService"
 
+    companion object {
+        /**
+         * Normalisation Unicode stricte pour la recherche textuelle :
+         * - trim
+         * - décomposition NFD + suppression des diacritiques (accents)
+         * - minuscules
+         * - réduction des espaces multiples
+         */
+        fun normalizeForSearch(text: String): String {
+            val trimmed = text.trim()
+            if (trimmed.isEmpty()) return ""
+            val normalized = java.text.Normalizer.normalize(trimmed, java.text.Normalizer.Form.NFD)
+            val withoutDiacritics = normalized.replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
+            return withoutDiacritics.lowercase().replace("\\s+".toRegex(), " ")
+        }
+    }
+
     /**
      * Recherche les établissements d'une catégorie autour d'un point central.
      * Utilise conjointement Google Places nearbysearch HTTP officiel et OpenStreetMap (Overpass API)
      * pour garantir une couverture exhaustive (ex: 100% des pharmacies locales en Algérie/zones denses).
+     * Si un mot-clé/enseigne est fourni, le filtrage local strict sur le titre du commerce fait foi.
      */
     suspend fun searchNearby(
         centerLat: Double,
         centerLng: Double,
         radiusMeters: Int,
         category: PlaceCategory,
+        keyword: String? = null,
         maxResults: Int = 60
     ): List<NearbyPlace> = supervisorScope {
         try {
+            val cleanKeyword = keyword?.trim()?.takeIf { it.isNotEmpty() }
             val allTypes = listOf(category.primaryType) + category.secondaryTypes
             val placesMap = mutableMapOf<String, NearbyPlace>()
 
-            // 1. Requête Google Places en asynchrone
+            // 1. Requête Google Places en asynchrone (le keyword aide Google à remonter les bons candidats)
             val googleDeferred = async {
                 val gMap = mutableMapOf<String, NearbyPlace>()
                 for (type in allTypes) {
-                    val found = fetchNearbyPlacesHttp(centerLat, centerLng, radiusMeters, type = type, keyword = null)
+                    val found = fetchNearbyPlacesHttp(centerLat, centerLng, radiusMeters, type = type, keyword = cleanKeyword)
                     for (p in found) {
                         gMap[p.placeId] = p
                     }
                 }
                 if (gMap.isEmpty() && category.keywords.isNotEmpty()) {
                     for (kw in category.keywords.take(2)) {
-                        val found = fetchNearbyPlacesHttp(centerLat, centerLng, radiusMeters, type = null, keyword = kw)
+                        val searchKw = if (cleanKeyword != null) "$cleanKeyword $kw" else kw
+                        val found = fetchNearbyPlacesHttp(centerLat, centerLng, radiusMeters, type = null, keyword = searchKw)
                         for (p in found) {
                             gMap[p.placeId] = p
                         }
@@ -99,8 +120,17 @@ class NearbyPlacesService @Inject constructor(
                 }
             }
 
-            val sorted = placesMap.values.sortedBy { it.distanceMeters }.take(maxResults)
-            Log.d(tag, "searchNearby ($centerLat, $centerLng) category=${category.id} -> ${sorted.size} POIs uniques trouvés (Google: ${googleResults.size}, OSM: ${overpassResults.size})")
+            // 4. FILTRE LOCAL STRICT FAISANT FOI (uniquement sur le titre du commerce place.name)
+            val candidatePlaces = placesMap.values
+            val strictlyFiltered = if (cleanKeyword == null) {
+                candidatePlaces
+            } else {
+                val targetNormalized = normalizeForSearch(cleanKeyword)
+                candidatePlaces.filter { normalizeForSearch(it.name).contains(targetNormalized) }
+            }
+
+            val sorted = strictlyFiltered.sortedBy { it.distanceMeters }.take(maxResults)
+            Log.d(tag, "searchNearby ($centerLat, $centerLng) category=${category.id}, keyword=$cleanKeyword -> ${sorted.size} POIs uniques trouvés (filtrés depuis ${candidatePlaces.size} candidats)")
             sorted
         } catch (t: Throwable) {
             Log.e(tag, "Erreur searchNearby: ${t.message}", t)
@@ -115,6 +145,7 @@ class NearbyPlacesService @Inject constructor(
     suspend fun searchAlongWaypoints(
         waypoints: List<LatLng>,
         category: PlaceCategory,
+        keyword: String? = null,
         radiusPerPointMeters: Int = 1000
     ): List<NearbyPlace> = supervisorScope {
         try {
@@ -133,6 +164,7 @@ class NearbyPlacesService @Inject constructor(
                         centerLng = point.longitude,
                         radiusMeters = radiusPerPointMeters,
                         category = category,
+                        keyword = keyword,
                         maxResults = 12
                     )
                 }
@@ -163,11 +195,12 @@ class NearbyPlacesService @Inject constructor(
         endLat: Double,
         endLng: Double,
         category: PlaceCategory,
+        keyword: String? = null,
         sampleCount: Int = 6,
         radiusPerPointMeters: Int = 1000
     ): List<NearbyPlace> {
         val waypoints = generateWaypoints(startLat, startLng, endLat, endLng, sampleCount)
-        return searchAlongWaypoints(waypoints, category, radiusPerPointMeters)
+        return searchAlongWaypoints(waypoints, category, keyword, radiusPerPointMeters)
     }
 
     /**

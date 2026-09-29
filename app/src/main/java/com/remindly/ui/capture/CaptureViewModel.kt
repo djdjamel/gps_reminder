@@ -30,6 +30,7 @@ data class CaptureUiState(
     val placeRadiusM: Float? = null,
     val placeLabel: String? = null,
     val placeCategory: String? = null,
+    val categoryKeyword: String? = null,
     val categoryRefType: String? = null,
     val commuteDirection: String? = null,
     val placeActiveFromMillis: Long? = null,
@@ -145,7 +146,8 @@ class CaptureViewModel @Inject constructor(
         categoryRefType: String? = null,
         commuteDirection: String? = null,
         radiusM: Float? = null,
-        activeFromMillis: Long? = null
+        activeFromMillis: Long? = null,
+        categoryKeyword: String? = null
     ) {
         _uiState.update {
             it.copy(
@@ -153,6 +155,7 @@ class CaptureViewModel @Inject constructor(
                 placeLng = lng,
                 placeLabel = label ?: "Lieu sélectionné",
                 placeCategory = category,
+                categoryKeyword = categoryKeyword,
                 categoryRefType = categoryRefType,
                 commuteDirection = commuteDirection,
                 placeRadiusM = radiusM,
@@ -168,6 +171,7 @@ class CaptureViewModel @Inject constructor(
                 placeLng = null,
                 placeLabel = null,
                 placeCategory = null,
+                categoryKeyword = null,
                 categoryRefType = null,
                 commuteDirection = null,
                 placeRadiusM = null,
@@ -283,6 +287,7 @@ class CaptureViewModel @Inject constructor(
                 placeRadiusM = if (hasPlace) (state.placeRadiusM ?: 450f) else null,
                 placeLabel = state.placeLabel,
                 placeCategory = state.placeCategory,
+                categoryKeyword = state.categoryKeyword,
                 categoryRefType = state.categoryRefType,
                 commuteDirection = state.commuteDirection,
                 placeActiveFromMillis = state.placeActiveFromMillis,

@@ -19,6 +19,7 @@ data class Reminder(
     val placeRadiusM: Float? = null,
     val placeLabel: String? = null,
     val placeCategory: String? = null,
+    val categoryKeyword: String? = null,
     val categoryRefType: String? = null,
     val commuteDirection: String? = null,
     val placeActiveFromMillis: Long? = null,

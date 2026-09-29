@@ -47,7 +47,7 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlacePickerScreen(
-    onPlaceSelected: (LatLng, String?, String?, String?, String?, Float?, Long?) -> Unit,
+    onPlaceSelected: (LatLng, String?, String?, String?, String?, Float?, Long?, String?) -> Unit,
     onNavigateBack: () -> Unit,
     initialRadiusM: Float? = null,
     initialActiveFromMillis: Long? = null,
@@ -295,7 +295,7 @@ fun PlacePickerScreen(
                                     onClick = {
                                         val label = selectedLocationName ?: "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
                                         val finalRadius = if (isAutoRadius) null else selectedRadiusM
-                                        onPlaceSelected(selectedLocation, label, null, null, null, finalRadius, selectedActiveFromMillis)
+                                        onPlaceSelected(selectedLocation, label, null, null, null, finalRadius, selectedActiveFromMillis, null)
                                     },
                                     modifier = Modifier.size(44.dp),
                                     shape = RoundedCornerShape(12.dp),
@@ -389,7 +389,7 @@ fun PlacePickerScreen(
                                         onClick = {
                                             val label = selectedLocationName ?: "Lat: ${"%.4f".format(selectedLocation.latitude)}, Lng: ${"%.4f".format(selectedLocation.longitude)}"
                                             val finalRadius = if (isAutoRadius) null else selectedRadiusM
-                                            onPlaceSelected(selectedLocation, label, null, null, null, finalRadius, selectedActiveFromMillis)
+                                            onPlaceSelected(selectedLocation, label, null, null, null, finalRadius, selectedActiveFromMillis, null)
                                         },
                                         modifier = Modifier.size(44.dp),
                                         shape = RoundedCornerShape(12.dp),
@@ -484,11 +484,12 @@ fun PlacePickerScreen(
                 userSettings = userSettings,
                 activeFromMillis = selectedActiveFromMillis,
                 onActiveFromMillisChange = { selectedActiveFromMillis = it },
-                onCategoryConfirmed = { category, refType, commuteDirection, activeFromMillis ->
-                    val label = "À proximité : ${category.displayName}"
+                onCategoryConfirmed = { category, keyword, refType, commuteDirection, activeFromMillis ->
+                    val kwSuffix = if (!keyword.isNullOrBlank()) " · $keyword" else ""
+                    val label = "À proximité : ${category.displayName}$kwSuffix"
                     val ref = if (refType == CategoryReferenceType.COMMUTE_ROUTE) "COMMUTE_ROUTE" else "CURRENT_LOCATION"
                     val loc = currentLocation ?: selectedLocation
-                    onPlaceSelected(loc, label, category.id, ref, commuteDirection.id, userSettings.poiDetectionRadiusM.toFloat(), activeFromMillis)
+                    onPlaceSelected(loc, label, category.id, ref, commuteDirection.id, userSettings.poiDetectionRadiusM.toFloat(), activeFromMillis, keyword)
                 }
             )
         }
@@ -806,9 +807,10 @@ private fun CategoryPickerTab(
     userSettings: com.remindly.data.settings.VoiceAlarmSettings,
     activeFromMillis: Long?,
     onActiveFromMillisChange: (Long?) -> Unit,
-    onCategoryConfirmed: (PlaceCategory, CategoryReferenceType, CommuteDirection, Long?) -> Unit
+    onCategoryConfirmed: (PlaceCategory, String?, CategoryReferenceType, CommuteDirection, Long?) -> Unit
 ) {
     var selectedCategory by remember { mutableStateOf(PlaceCategory.SUPERMARKET) }
+    var categoryKeyword by remember { mutableStateOf("") }
     var selectedRefType by remember { mutableStateOf(CategoryReferenceType.CURRENT_LOCATION) }
     var selectedDirection by remember { mutableStateOf(CommuteDirection.RETURN) }
 
@@ -892,6 +894,30 @@ private fun CategoryPickerTab(
                     }
                 }
             }
+
+            // Champ mot-clé / enseigne optionnel
+            OutlinedTextField(
+                value = categoryKeyword,
+                onValueChange = { categoryKeyword = it },
+                label = { Text("Enseigne / mot-clé (optionnel)") },
+                placeholder = { Text("Ex: Monoprix, Total, Paul…") },
+                supportingText = {
+                    Text("Seuls les commerces dont le nom contient ce texte seront retenus.")
+                },
+                singleLine = true,
+                leadingIcon = {
+                    Icon(Icons.Filled.Store, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                },
+                trailingIcon = {
+                    if (categoryKeyword.isNotEmpty()) {
+                        IconButton(onClick = { categoryKeyword = "" }) {
+                            Icon(Icons.Filled.Clear, contentDescription = "Effacer")
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
 
             HorizontalDivider()
 
@@ -1021,11 +1047,15 @@ private fun CategoryPickerTab(
         Spacer(Modifier.height(8.dp))
 
         Button(
-            onClick = { onCategoryConfirmed(selectedCategory, selectedRefType, selectedDirection, activeFromMillis) },
+            onClick = {
+                val kw = categoryKeyword.trim().ifBlank { null }
+                onCategoryConfirmed(selectedCategory, kw, selectedRefType, selectedDirection, activeFromMillis)
+            },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text("Confirmer cette catégorie (${selectedCategory.displayName})")
+            val kwSuffix = if (categoryKeyword.isNotBlank()) " · ${categoryKeyword.trim()}" else ""
+            Text("Confirmer cette catégorie (${selectedCategory.displayName}$kwSuffix)")
         }
     }
 }

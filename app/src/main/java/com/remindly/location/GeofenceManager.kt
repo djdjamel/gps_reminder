@@ -188,8 +188,9 @@ class GeofenceManager @Inject constructor(
                 val category = PlaceCategory.fromId(reminder.placeCategory) ?: return@launch
                 val settings = settingsRepository.getSettings()
                 val detectionRadiusM = reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
+                val kwInfo = if (!reminder.categoryKeyword.isNullOrBlank()) " | Enseigne: '${reminder.categoryKeyword}'" else ""
 
-                appLogger.i("POI_SEARCH", "Recherche des POIs catégorie '${category.displayName}' (Rayon de détection: ${detectionRadiusM.toInt()}m)", reminder.id)
+                appLogger.i("POI_SEARCH", "Recherche des POIs catégorie '${category.displayName}'$kwInfo (Rayon de détection: ${detectionRadiusM.toInt()}m)", reminder.id)
 
                 var searchCenterLat: Double? = null
                 var searchCenterLng: Double? = null
@@ -198,7 +199,7 @@ class GeofenceManager @Inject constructor(
                     if (settings.commuteRoutePolyline != null) {
                         val allPoints = directionsService.decodePolyline(settings.commuteRoutePolyline)
                         Log.d(tag, "armCategoryPoIs: Recherche le long de la polyline (${allPoints.size} points)")
-                        nearbyPlacesService.searchAlongWaypoints(allPoints, category, radiusPerPointMeters = 1000)
+                        nearbyPlacesService.searchAlongWaypoints(allPoints, category, keyword = reminder.categoryKeyword, radiusPerPointMeters = 1000)
                     } else {
                         Log.d(tag, "armCategoryPoIs: Recherche le long du trajet direct (${settings.commuteStartLabel} -> ${settings.commuteEndLabel})")
                         nearbyPlacesService.searchAlongRoute(
@@ -207,6 +208,7 @@ class GeofenceManager @Inject constructor(
                             endLat = settings.commuteEndLat!!,
                             endLng = settings.commuteEndLng!!,
                             category = category,
+                            keyword = reminder.categoryKeyword,
                             radiusPerPointMeters = 1000
                         )
                     }
@@ -242,7 +244,8 @@ class GeofenceManager @Inject constructor(
                             centerLat = centerLat,
                             centerLng = centerLng,
                             radiusMeters = radiusMeters,
-                            category = category
+                            category = category,
+                            keyword = reminder.categoryKeyword
                         )
                     } else {
                         val warnMsg = "Position actuelle inconnue pour la recherche de catégorie"
@@ -252,11 +255,20 @@ class GeofenceManager @Inject constructor(
                     }
                 }
 
-                if (places.isNotEmpty()) {
+                // Filtrage strict faisant foi sur le titre du commerce
+                val cleanKeyword = reminder.categoryKeyword?.trim()?.takeIf { it.isNotEmpty() }
+                val matchingPlaces = if (cleanKeyword == null) {
+                    places
+                } else {
+                    val targetNormalized = NearbyPlacesService.normalizeForSearch(cleanKeyword)
+                    places.filter { NearbyPlacesService.normalizeForSearch(it.name).contains(targetNormalized) }
+                }
+
+                if (matchingPlaces.isNotEmpty()) {
                     val editor = prefs.edit()
                     val allTrackedIds = mutableSetOf<String>()
 
-                    places.forEachIndexed { index, place ->
+                    matchingPlaces.forEachIndexed { index, place ->
                         val distFormatted = if (place.distanceMeters > 0f) "${place.distanceMeters.toInt()}m" else "Inconnue"
                         val poiDetailMsg = "#${index + 1} ${place.name} | Dist: $distFormatted | Pos: (${place.latitude}, ${place.longitude})"
                         Log.d(tag, "-> POI: $poiDetailMsg")

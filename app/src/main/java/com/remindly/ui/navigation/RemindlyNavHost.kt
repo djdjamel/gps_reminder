@@ -102,16 +102,18 @@ fun RemindlyNavHost(
                     val lng = savedStateHandle.get<Double>("place_lng") ?: return@collect
                     val label = savedStateHandle.get<String>("place_label")
                     val category = savedStateHandle.get<String>("place_category")
+                    val categoryKeyword = savedStateHandle.get<String>("place_category_keyword")
                     val categoryRef = savedStateHandle.get<String>("place_category_ref")
                     val commuteDirection = savedStateHandle.get<String>("place_commute_direction")
                     val radius = savedStateHandle.get<Float>("place_radius")
                     val activeFromMillis = savedStateHandle.get<Long>("place_active_from_millis")
                     if (lat != 0.0 && lng != 0.0) {
-                        captureViewModel.setPlace(lat, lng, label, category, categoryRef, commuteDirection, radius, activeFromMillis)
+                        captureViewModel.setPlace(lat, lng, label, category, categoryRef, commuteDirection, radius, activeFromMillis, categoryKeyword)
                         savedStateHandle.remove<Double>("place_lat")
                         savedStateHandle.remove<Double>("place_lng")
                         savedStateHandle.remove<String>("place_label")
                         savedStateHandle.remove<String>("place_category")
+                        savedStateHandle.remove<String>("place_category_keyword")
                         savedStateHandle.remove<String>("place_category_ref")
                         savedStateHandle.remove<String>("place_commute_direction")
                         savedStateHandle.remove<Float>("place_radius")
@@ -140,16 +142,18 @@ fun RemindlyNavHost(
                     val lng = savedStateHandle.get<Double>("place_lng") ?: return@collect
                     val label = savedStateHandle.get<String>("place_label")
                     val category = savedStateHandle.get<String>("place_category")
+                    val categoryKeyword = savedStateHandle.get<String>("place_category_keyword")
                     val categoryRef = savedStateHandle.get<String>("place_category_ref")
                     val commuteDirection = savedStateHandle.get<String>("place_commute_direction")
                     val radius = savedStateHandle.get<Float>("place_radius")
                     val activeFromMillis = savedStateHandle.get<Long>("place_active_from_millis")
                     if (lat != 0.0 && lng != 0.0) {
-                        detailViewModel.setPlace(lat, lng, label, category, categoryRef, commuteDirection, radius, activeFromMillis)
+                        detailViewModel.setPlace(lat, lng, label, category, categoryRef, commuteDirection, radius, activeFromMillis, categoryKeyword)
                         savedStateHandle.remove<Double>("place_lat")
                         savedStateHandle.remove<Double>("place_lng")
                         savedStateHandle.remove<String>("place_label")
                         savedStateHandle.remove<String>("place_category")
+                        savedStateHandle.remove<String>("place_category_keyword")
                         savedStateHandle.remove<String>("place_category_ref")
                         savedStateHandle.remove<String>("place_commute_direction")
                         savedStateHandle.remove<Float>("place_radius")
@@ -171,12 +175,13 @@ fun RemindlyNavHost(
 
         composable(Routes.PlacePicker.route) {
             PlacePickerScreen(
-                onPlaceSelected = { latLng, label, category, categoryRef, commuteDirection, radiusM, activeFromMillis ->
+                onPlaceSelected = { latLng, label, category, categoryRef, commuteDirection, radiusM, activeFromMillis, categoryKeyword ->
                     navController.previousBackStackEntry?.savedStateHandle?.apply {
                         set("place_lat", latLng.latitude)
                         set("place_lng", latLng.longitude)
                         set("place_label", label ?: "Lat: ${"%.4f".format(latLng.latitude)}, Lng: ${"%.4f".format(latLng.longitude)}")
                         set("place_category", category)
+                        set("place_category_keyword", categoryKeyword)
                         set("place_category_ref", categoryRef)
                         set("place_commute_direction", commuteDirection)
                         set("place_radius", radiusM)
@@ -192,12 +197,13 @@ fun RemindlyNavHost(
 
         composable(Routes.PlacePickerFromDetail.route) {
             PlacePickerScreen(
-                onPlaceSelected = { latLng, label, category, categoryRef, commuteDirection, radiusM, activeFromMillis ->
+                onPlaceSelected = { latLng, label, category, categoryRef, commuteDirection, radiusM, activeFromMillis, categoryKeyword ->
                     navController.previousBackStackEntry?.savedStateHandle?.apply {
                         set("place_lat", latLng.latitude)
                         set("place_lng", latLng.longitude)
                         set("place_label", label ?: "Lat: ${"%.4f".format(latLng.latitude)}, Lng: ${"%.4f".format(latLng.longitude)}")
                         set("place_category", category)
+                        set("place_category_keyword", categoryKeyword)
                         set("place_category_ref", categoryRef)
                         set("place_commute_direction", commuteDirection)
                         set("place_radius", radiusM)
