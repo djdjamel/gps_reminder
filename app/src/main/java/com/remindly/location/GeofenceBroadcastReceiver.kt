@@ -110,8 +110,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             android.util.Log.i("GeofenceReceiver", stepMsg)
                             appLogger.success("STAGE_DEST_REACHED", stepMsg, reminderId)
 
-                            geofenceManager.removeSingleGeofenceSuspend(geofence.requestId)
-                            geofenceManager.armCategoryPoIsSuspend(reminder)
+                            geofenceManager.completeStageDestinationAndArmPoIs(geofence.requestId, reminder)
                             continue
                         }
 

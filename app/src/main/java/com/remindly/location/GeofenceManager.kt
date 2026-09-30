@@ -573,6 +573,7 @@ class GeofenceManager @Inject constructor(
             currentActualState = actualState,
             idsToRemove = idsToRemove,
             removedFromGms = removedFromGms,
+            reminderId = reminderId,
             reminder = reminder
         )
 
@@ -927,6 +928,23 @@ class GeofenceManager @Inject constructor(
         Log.i(tag, logMsg)
         appLogger.i("ROLLING_WINDOW_REFRESH", logMsg, reminder.id)
         removeGeofenceSuspendInternal(reminder.id, synchronizeAfter = false)
+        armCategoryPoIsSuspendInternal(reminder)
+    }
+
+    /**
+     * Transaction atomique pour l'étape de destination intermédiaire (_stage_dest).
+     * Exécute sous un verrou UNIQUE du Mutex :
+     * 1. Suppression de la géofence d'étape auprès de GMS et réconciliation locale.
+     * 2. Armement contextuel des POIs de catégorie pour le trajet retour.
+     *
+     * Rend l'enchaînement étape -> réarmement indivisible.
+     */
+    suspend fun completeStageDestinationAndArmPoIs(requestId: String, reminder: Reminder) = geofenceMutex.withLock {
+        completeStageDestinationAndArmPoIsInternal(requestId, reminder)
+    }
+
+    private suspend fun completeStageDestinationAndArmPoIsInternal(requestId: String, reminder: Reminder) {
+        removeSingleGeofenceSuspendInternal(requestId)
         armCategoryPoIsSuspendInternal(reminder)
     }
 

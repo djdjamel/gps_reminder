@@ -172,6 +172,37 @@ class HardwareStateSynchronizationTest {
     }
 
     @Test
+    fun testReconcileReminderRemoval_whenReminderNull_cleansUpOrphanLinks() {
+        val deletedReminderId = 88L
+        val p1 = poiRegistry.registerOrGetPoi(PoiProvider.GOOGLE_PLACES, "p88", "Commerce 88", 36.75, 3.05)
+        val link = poiRegistry.linkReminderToPoi(deletedReminderId, p1.id, 300f)
+        val reqId = "geo_p88"
+        val tg = poiRegistry.allocateGeofenceForPoi(p1.id, reqId)
+        poiRegistry.markGeofenceArmed(reqId)
+
+        val actualState = GeofenceStateSnapshot(mapOf(reqId to tg))
+        assertEquals(1, actualState.count)
+        assertEquals(1, poiRegistry.getLinksForReminder(deletedReminderId).size)
+
+        // Cas : le rappel a été supprimé de Room avant la désactivation des géofences (reminder == null)
+        val stateAfterRemoval = reconciler.reconcileReminderRemoval(
+            currentActualState = actualState,
+            idsToRemove = listOf(reqId),
+            removedFromGms = true,
+            reminderId = deletedReminderId,
+            reminder = null
+        )
+
+        // Vérifications :
+        assertEquals(0, stateAfterRemoval.count)
+        assertNull("La géofence matérielle doit être libérée", poiRegistry.getActiveGeofenceForPoi(p1.id))
+        assertEquals(PoiHardwareStatus.RETIRED, p1.hardwareStatus)
+        // Les liens du rappel orphelin DOIVENT être passés à COMPLETED et retirés du registre !
+        assertEquals("Le statut du lien doit être COMPLETED", LinkLifecycleState.COMPLETED, link.state)
+        assertTrue("Les liens orphelins doivent être désenregistrés du registre", poiRegistry.getLinksForReminder(deletedReminderId).isEmpty())
+    }
+
+    @Test
     fun testReconcileGlobalPurge_gmsFailureAndSuccess() {
         val p1 = poiRegistry.registerOrGetPoi(PoiProvider.GOOGLE_PLACES, "p1", "Pharmacie 1", 36.75, 3.05)
         val p2 = poiRegistry.registerOrGetPoi(PoiProvider.GOOGLE_PLACES, "p2", "Pharmacie 2", 36.76, 3.06)

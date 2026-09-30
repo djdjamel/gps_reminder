@@ -54,18 +54,20 @@ class HardwareStateReconciler @Inject constructor(
      * @param currentActualState L'état matériel snapshot actuel avant l'opération.
      * @param idsToRemove Liste des identifiants de géofences ciblées.
      * @param removedFromGms Indique si l'appel GMS removeGeofences(ids) a réussi.
-     * @param reminder Le rappel concerné (optionnel, pour ajuster le statut des liens).
+     * @param reminderId Identifiant du rappel concerné (toujours renseigné).
+     * @param reminder Le rappel concerné (null si supprimé de la base de données).
      * @return Le nouveau snapshot actualState réconcilié.
      */
     fun reconcileReminderRemoval(
         currentActualState: GeofenceStateSnapshot,
         idsToRemove: List<String>,
         removedFromGms: Boolean,
-        reminder: Reminder?
+        reminderId: Long,
+        reminder: Reminder? = null
     ): GeofenceStateSnapshot {
         if (!removedFromGms || idsToRemove.isEmpty()) {
             if (!removedFromGms && idsToRemove.isNotEmpty()) {
-                Log.w(tag, "reconcileReminderRemoval: Échec matériel GMS pour rappel #${reminder?.id}. Aucune modification de actualState ni de PoiRegistry.")
+                Log.w(tag, "reconcileReminderRemoval: Échec matériel GMS pour rappel #$reminderId. Aucune modification de actualState ni de PoiRegistry.")
             }
             return currentActualState
         }
@@ -79,27 +81,43 @@ class HardwareStateReconciler @Inject constructor(
         val newActualState = diffEngine.reconcileActualState(currentActualState, emptyList(), idsToRemove)
 
         // 3. Gestion du cycle de vie des liens
-        if (reminder != null) {
-            val isPermanentlyInactive = reminder.status == ReminderStatus.COMPLETED
-            val links = poiRegistry.getLinksForReminder(reminder.id)
-            if (isPermanentlyInactive) {
-                links.forEach { it.state = LinkLifecycleState.COMPLETED }
-                poiRegistry.unregisterReminder(reminder.id)
-            } else {
-                links.forEach { link ->
-                    // On préserve les POIs déjà notifiés (ALERTED) ou ignorés (SKIPPED).
-                    // Les liens qui étaient planifiés ou armés redeviennent CANDIDATE pour rester
-                    // éligibles lors des futures passes de l'ordonnanceur (ContextualGeofenceScheduler).
-                    if (link.state == LinkLifecycleState.ARMED || link.state == LinkLifecycleState.SCHEDULED) {
-                        link.state = LinkLifecycleState.CANDIDATE
-                    }
+        // Si reminder == null (rappel supprimé de la base) ou status == COMPLETED, le rappel est définitivement inactif.
+        // On passe les liens à COMPLETED et on désenregistre le reminder de PoiRegistry pour éviter tout lien orphelin.
+        val isPermanentlyInactive = reminder == null || reminder.status == ReminderStatus.COMPLETED
+        val links = poiRegistry.getLinksForReminder(reminderId)
+        if (isPermanentlyInactive) {
+            links.forEach { it.state = LinkLifecycleState.COMPLETED }
+            poiRegistry.unregisterReminder(reminderId)
+        } else {
+            links.forEach { link ->
+                // On préserve les POIs déjà notifiés (ALERTED) ou ignorés (SKIPPED).
+                // Les liens qui étaient planifiés ou armés redeviennent CANDIDATE pour rester
+                // éligibles lors des futures passes de l'ordonnanceur (ContextualGeofenceScheduler).
+                if (link.state == LinkLifecycleState.ARMED || link.state == LinkLifecycleState.SCHEDULED) {
+                    link.state = LinkLifecycleState.CANDIDATE
                 }
             }
         }
 
-        Log.d(tag, "reconcileReminderRemoval: Succès GMS #${reminder?.id}. ${idsToRemove.size} IDs retirés, reste ${newActualState.count} géofences dans actualState.")
+        Log.d(tag, "reconcileReminderRemoval: Succès GMS #$reminderId (isPermanentlyInactive=$isPermanentlyInactive). ${idsToRemove.size} IDs retirés, reste ${newActualState.count} géofences dans actualState.")
         return newActualState
     }
+
+    /**
+     * Surcharge de compatibilité acceptant une instance Reminder non-nulle.
+     */
+    fun reconcileReminderRemoval(
+        currentActualState: GeofenceStateSnapshot,
+        idsToRemove: List<String>,
+        removedFromGms: Boolean,
+        reminder: Reminder
+    ): GeofenceStateSnapshot = reconcileReminderRemoval(
+        currentActualState = currentActualState,
+        idsToRemove = idsToRemove,
+        removedFromGms = removedFromGms,
+        reminderId = reminder.id,
+        reminder = reminder
+    )
 
     /**
      * Réconciliation suite à la suppression d'une géofence unique (ex: étape intermédiaire destination atteinte).
