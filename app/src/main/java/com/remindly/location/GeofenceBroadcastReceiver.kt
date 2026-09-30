@@ -166,7 +166,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
                             // Désarmement séquentiel garanti de l'ancienne grappe avant l'armement de la nouvelle grappe
                             geofenceManager.removeGeofenceSuspend(reminderId)
-                            geofenceManager.armCategoryPoIs(reminder)
+                            geofenceManager.armCategoryPoIsSuspend(reminder)
                             continue
                         }
 

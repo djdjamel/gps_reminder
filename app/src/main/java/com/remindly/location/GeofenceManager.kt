@@ -77,115 +77,126 @@ class GeofenceManager @Inject constructor(
     @SuppressLint("MissingPermission")
     fun addGeofence(reminder: Reminder) {
         scope.launch {
-            try {
-                if (reminder.status != com.remindly.domain.model.ReminderStatus.ACTIVE) {
-                    val msg = "addGeofence ignoré: rappel #${reminder.id} n'est pas actif (status=${reminder.status})"
-                    Log.d(tag, msg)
-                    return@launch
-                }
-                val settings = settingsRepository.getSettings()
+            addGeofenceSuspend(reminder)
+        }
+    }
 
-                // 1. Rappel par Catégorie (POI)
-                if (reminder.placeCategory != null) {
-                    // Vérifier si c'est un trajet avec direction RETURN (Au retour : Travail -> Maison)
-                    val isCommuteRoute = reminder.categoryRefType == CategoryReferenceType.COMMUTE_ROUTE.id && settings.hasCommuteRoute
-                    val isReturnDirection = reminder.commuteDirection == CommuteDirection.RETURN.id
+    @SuppressLint("MissingPermission")
+    suspend fun addGeofenceSuspend(reminder: Reminder) {
+        try {
+            if (reminder.status != com.remindly.domain.model.ReminderStatus.ACTIVE) {
+                val msg = "addGeofence ignoré: rappel #${reminder.id} n'est pas actif (status=${reminder.status})"
+                Log.d(tag, msg)
+                return
+            }
+            val settings = settingsRepository.getSettings()
 
-                    if (isCommuteRoute && isReturnDirection && settings.commuteEndLat != null && settings.commuteEndLng != null) {
-                        val currentLocation = try {
-                            fusedLocationClient.lastLocation.await() ?: fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await()
-                        } catch (e: Exception) {
-                            null
-                        }
+            // 1. Rappel par Catégorie (POI)
+            if (reminder.placeCategory != null) {
+                // Vérifier si c'est un trajet avec direction RETURN (Au retour : Travail -> Maison)
+                val isCommuteRoute = reminder.categoryRefType == CategoryReferenceType.COMMUTE_ROUTE.id && settings.hasCommuteRoute
+                val isReturnDirection = reminder.commuteDirection == CommuteDirection.RETURN.id
 
-                        val results = FloatArray(1)
-                        if (currentLocation != null) {
-                            Location.distanceBetween(
-                                currentLocation.latitude,
-                                currentLocation.longitude,
-                                settings.commuteEndLat!!,
-                                settings.commuteEndLng!!,
-                                results
-                            )
-                        }
-
-                        val distM = if (currentLocation != null) results[0].toInt() else -1
-                        val isAlreadyAtDestination = currentLocation != null && results[0] < 500f
-
-                        val evalMsg = "Évaluation trajet 'Au retour': Distance à destination (${settings.commuteEndLabel ?: "Arrivée"}) = ${if (distM >= 0) "${distM}m" else "Inconnue"} (Seuil: 500m) -> ${if (isAlreadyAtDestination) "Déjà sur place, POIs armés immédiatement" else "Étape armée, en attente d'arrivée"}"
-                        Log.i(tag, "addGeofence: $evalMsg")
-                        appLogger.i("ROUTE_EVAL", evalMsg, reminder.id)
-
-                        if (!isAlreadyAtDestination) {
-                            // Poser uniquement un géofence d'étape sur le lieu de travail / arrivée
-                            val stageReqId = "${reminder.id}_stage_dest"
-                            val msg = "Rappel configuré 'Au retour'. Armement de l'étape sur destination (${settings.commuteEndLabel ?: "Travail"} à ${settings.commuteEndLat}, ${settings.commuteEndLng})"
-                            Log.i(tag, "addGeofence: $msg")
-                            appLogger.i("GEOFENCE_ARMED", msg, reminder.id)
-
-                            val currentTracked = prefs.getStringSet("geofences_${reminder.id}", emptySet()) ?: emptySet()
-                            val editor = prefs.edit()
-                            editor.putFloat("place_lat_${stageReqId}", settings.commuteEndLat!!.toFloat())
-                            editor.putFloat("place_lng_${stageReqId}", settings.commuteEndLng!!.toFloat())
-                            editor.putFloat("radius_${stageReqId}", 350f)
-                            editor.putStringSet("geofences_${reminder.id}", currentTracked + stageReqId)
-                            editor.apply()
-                            synchronizeGeofences()
-                            return@launch
-                        } else {
-                            val msg = "Utilisateur déjà à destination (${distM}m). Armement direct des POIs de retour."
-                            Log.i(tag, "addGeofence: $msg")
-                            appLogger.i("GEOFENCE_ARMED", msg, reminder.id)
-                        }
+                if (isCommuteRoute && isReturnDirection && settings.commuteEndLat != null && settings.commuteEndLng != null) {
+                    val currentLocation = try {
+                        fusedLocationClient.lastLocation.await() ?: fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await()
+                    } catch (e: Exception) {
+                        null
                     }
 
-                    // Armement direct des POIs
-                    armCategoryPoIs(reminder)
-                } else if (reminder.placeLat != null && reminder.placeLng != null && reminder.placeLat != 0.0 && reminder.placeLng != 0.0) {
-                    // 2. Rappel à adresse fixe unique (Rayon personnalisé ou défaut paramètres)
-                    val semanticRadius = reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
-                    val currentActivity = userActivityTracker.currentActivity.value
-                    val wakeRadius = GeofenceFilterUtils.computeDynamicWakeRadius(
-                        semanticRadius = semanticRadius,
-                        activityType = currentActivity,
-                        isFixedPlace = true
-                    )
+                    val results = FloatArray(1)
+                    if (currentLocation != null) {
+                        Location.distanceBetween(
+                            currentLocation.latitude,
+                            currentLocation.longitude,
+                            settings.commuteEndLat!!,
+                            settings.commuteEndLng!!,
+                            results
+                        )
+                    }
 
-                    val editor = prefs.edit()
-                    editor.putFloat("semantic_radius_${reminder.id}", semanticRadius)
-                    editor.putFloat("wake_radius_${reminder.id}", wakeRadius)
-                    editor.putString("place_name_${reminder.id}", reminder.placeLabel ?: reminder.text ?: "Lieu fixe")
-                    editor.putFloat("place_lat_${reminder.id}", reminder.placeLat.toFloat())
-                    editor.putFloat("place_lng_${reminder.id}", reminder.placeLng.toFloat())
-                    editor.putStringSet("geofences_${reminder.id}", setOf(reminder.id.toString()))
-                    editor.apply()
+                    val distM = if (currentLocation != null) results[0].toInt() else -1
+                    val isAlreadyAtDestination = currentLocation != null && results[0] < 500f
 
-                    val activityLabel = ActivityTransitionReceiver.getActivityLabel(currentActivity).second
-                    val msg = "Enregistrement géofence unique pour '${reminder.placeLabel ?: reminder.text ?: "Lieu fixe"}' (${reminder.placeLat}, ${reminder.placeLng}) - Rayon Sémantique: ${semanticRadius.toInt()}m | WakeRadius: ${wakeRadius.toInt()}m [$activityLabel]"
-                    Log.d(tag, "addGeofence: $msg")
-                    appLogger.i("GEOFENCE_ARMED", msg, reminder.id)
+                    val evalMsg = "Évaluation trajet 'Au retour': Distance à destination (${settings.commuteEndLabel ?: "Arrivée"}) = ${if (distM >= 0) "${distM}m" else "Inconnue"} (Seuil: 500m) -> ${if (isAlreadyAtDestination) "Déjà sur place, POIs armés immédiatement" else "Étape armée, en attente d'arrivée"}"
+                    Log.i(tag, "addGeofence: $evalMsg")
+                    appLogger.i("ROUTE_EVAL", evalMsg, reminder.id)
 
-                    synchronizeGeofences()
+                    if (!isAlreadyAtDestination) {
+                        // Poser uniquement un géofence d'étape sur le lieu de travail / arrivée
+                        val stageReqId = "${reminder.id}_stage_dest"
+                        val msg = "Rappel configuré 'Au retour'. Armement de l'étape sur destination (${settings.commuteEndLabel ?: "Travail"} à ${settings.commuteEndLat}, ${settings.commuteEndLng})"
+                        Log.i(tag, "addGeofence: $msg")
+                        appLogger.i("GEOFENCE_ARMED", msg, reminder.id)
+
+                        val currentTracked = prefs.getStringSet("geofences_${reminder.id}", emptySet()) ?: emptySet()
+                        val editor = prefs.edit()
+                        editor.putFloat("place_lat_${stageReqId}", settings.commuteEndLat!!.toFloat())
+                        editor.putFloat("place_lng_${stageReqId}", settings.commuteEndLng!!.toFloat())
+                        editor.putFloat("radius_${stageReqId}", 350f)
+                        editor.putStringSet("geofences_${reminder.id}", currentTracked + stageReqId)
+                        editor.apply()
+                        synchronizeGeofences()
+                        return
+                    } else {
+                        val msg = "Utilisateur déjà à destination (${distM}m). Armement direct des POIs de retour."
+                        Log.i(tag, "addGeofence: $msg")
+                        appLogger.i("GEOFENCE_ARMED", msg, reminder.id)
+                    }
                 }
-            } catch (t: Throwable) {
-                Log.e(tag, "Exception dans addGeofence: ${t.message}", t)
-                appLogger.e("GEOFENCE_ERROR", "Erreur addGeofence: ${t.message}", t, reminder.id)
-                handleGeofenceError(t, "Enregistrement du rappel ${reminder.id}")
+
+                // Armement direct des POIs
+                armCategoryPoIsSuspend(reminder)
+            } else if (reminder.placeLat != null && reminder.placeLng != null && reminder.placeLat != 0.0 && reminder.placeLng != 0.0) {
+                // 2. Rappel à adresse fixe unique (Rayon personnalisé ou défaut paramètres)
+                val semanticRadius = reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
+                val currentActivity = userActivityTracker.currentActivity.value
+                val wakeRadius = GeofenceFilterUtils.computeDynamicWakeRadius(
+                    semanticRadius = semanticRadius,
+                    activityType = currentActivity,
+                    isFixedPlace = true
+                )
+
+                val editor = prefs.edit()
+                editor.putFloat("semantic_radius_${reminder.id}", semanticRadius)
+                editor.putFloat("wake_radius_${reminder.id}", wakeRadius)
+                editor.putString("place_name_${reminder.id}", reminder.placeLabel ?: reminder.text ?: "Lieu fixe")
+                editor.putFloat("place_lat_${reminder.id}", reminder.placeLat.toFloat())
+                editor.putFloat("place_lng_${reminder.id}", reminder.placeLng.toFloat())
+                editor.putStringSet("geofences_${reminder.id}", setOf(reminder.id.toString()))
+                editor.apply()
+
+                val activityLabel = ActivityTransitionReceiver.getActivityLabel(currentActivity).second
+                val msg = "Enregistrement géofence unique pour '${reminder.placeLabel ?: reminder.text ?: "Lieu fixe"}' (${reminder.placeLat}, ${reminder.placeLng}) - Rayon Sémantique: ${semanticRadius.toInt()}m | WakeRadius: ${wakeRadius.toInt()}m [$activityLabel]"
+                Log.d(tag, "addGeofence: $msg")
+                appLogger.i("GEOFENCE_ARMED", msg, reminder.id)
+
+                synchronizeGeofences()
             }
+        } catch (t: Throwable) {
+            Log.e(tag, "Exception dans addGeofence: ${t.message}", t)
+            appLogger.e("GEOFENCE_ERROR", "Erreur addGeofence: ${t.message}", t, reminder.id)
+            handleGeofenceError(t, "Enregistrement du rappel ${reminder.id}")
         }
     }
 
     @SuppressLint("MissingPermission")
     fun armCategoryPoIs(reminder: Reminder) {
         scope.launch {
-            try {
-                if (reminder.status != com.remindly.domain.model.ReminderStatus.ACTIVE) {
-                    val msg = "armCategoryPoIs ignoré: rappel #${reminder.id} n'est pas actif (status=${reminder.status})"
-                    Log.d(tag, msg)
-                    return@launch
-                }
-                if (reminder.placeCategory == null) return@launch
-                val category = PlaceCategory.fromId(reminder.placeCategory) ?: return@launch
+            armCategoryPoIsSuspend(reminder)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    suspend fun armCategoryPoIsSuspend(reminder: Reminder) {
+        try {
+            if (reminder.status != com.remindly.domain.model.ReminderStatus.ACTIVE) {
+                val msg = "armCategoryPoIs ignoré: rappel #${reminder.id} n'est pas actif (status=${reminder.status})"
+                Log.d(tag, msg)
+                return
+            }
+            if (reminder.placeCategory == null) return
+            val category = PlaceCategory.fromId(reminder.placeCategory) ?: return
                 val settings = settingsRepository.getSettings()
                 val detectionRadiusM = reminder.placeRadiusM ?: settings.poiDetectionRadiusM.toFloat()
                 val kwInfo = if (!reminder.categoryKeyword.isNullOrBlank()) " | Enseigne: '${reminder.categoryKeyword}'" else ""
@@ -361,7 +372,6 @@ class GeofenceManager @Inject constructor(
                 handleGeofenceError(t, "Recherche POI pour rappel ${reminder.id}")
             }
         }
-    }
 
     @SuppressLint("MissingPermission")
     private fun registerSingleGeofence(
@@ -429,6 +439,8 @@ class GeofenceManager @Inject constructor(
         } catch (e: Exception) {
             Log.w(tag, "Avertissement lors de la purge globale des géofences: ${e.message}")
         }
+        actualState = GeofenceStateSnapshot()
+        poiRegistry.clearAllActiveGeofences()
     }
 
     fun removeSingleGeofence(requestId: String) {
@@ -443,13 +455,20 @@ class GeofenceManager @Inject constructor(
 
     private fun getGeofenceIdsForReminder(reminderId: Long): List<String> {
         val storedIds = prefs.getStringSet("geofences_$reminderId", emptySet()) ?: emptySet()
+        val activeIds = prefs.getStringSet("active_geofences_$reminderId", emptySet()) ?: emptySet()
         val defaultIds = listOf(reminderId.toString(), "${reminderId}_stage_dest", "${reminderId}_exit_zone") + (0..150).map { "${reminderId}_geo_$it" }
         val prefix = "${reminderId}_"
         val dynamicIds = prefs.all.keys
             .filter { it.startsWith("place_name_${prefix}") || it.startsWith("place_lat_${prefix}") || it.startsWith("place_lng_${prefix}") }
             .map { it.removePrefix("place_name_").removePrefix("place_lat_").removePrefix("place_lng_") }
             .toSet()
-        return (storedIds + defaultIds + dynamicIds).toSet().toList()
+        val linkedPoiIds = poiRegistry.getLinksForReminder(reminderId).map { it.poiId }.toSet()
+        val poiGeofenceIds = poiRegistry.getAllActiveGeofences().filter { linkedPoiIds.contains(it.poiId) }.map { it.requestId }.toSet()
+        val actualIds = actualState.geofences.filter { (reqId, tracked) ->
+            reqId == reminderId.toString() || reqId.startsWith(prefix) || linkedPoiIds.contains(tracked.poiId)
+        }.keys
+
+        return (storedIds + activeIds + defaultIds + dynamicIds + poiGeofenceIds + actualIds).toSet().toList()
     }
 
     private fun cleanupPrefsForReminder(reminderId: Long, idsToRemove: List<String>) {
@@ -480,30 +499,45 @@ class GeofenceManager @Inject constructor(
      */
     suspend fun removeGeofenceSuspend(reminderId: Long) {
         val idsToRemove = getGeofenceIdsForReminder(reminderId)
-        try {
-            geofencingClient.removeGeofences(idsToRemove).await()
+        if (idsToRemove.isNotEmpty()) {
+            try {
+                geofencingClient.removeGeofences(idsToRemove).await()
+            } catch (e: Exception) {
+                Log.w(tag, "Erreur suppression géofences $reminderId via GMS: ${e.message}")
+            }
+
+            // 1. Libération matérielle des géofences dans le PoiRegistry
+            idsToRemove.forEach { reqId ->
+                poiRegistry.releaseGeofence(reqId)
+            }
+
+            // 2. Réconciliation atomique de actualState pour Google Play Services
+            actualState = diffEngine.reconcileActualState(actualState, emptyList(), idsToRemove)
+
+            // 3. Nettoyage des SharedPreferences
             cleanupPrefsForReminder(reminderId, idsToRemove)
-            val reminder = reminderRepositoryProvider.get().getById(reminderId)
-            val isPermanentlyInactive = reminder == null || reminder.status == com.remindly.domain.model.ReminderStatus.COMPLETED
-            val links = poiRegistry.getLinksForReminder(reminderId)
-            if (isPermanentlyInactive) {
-                links.forEach { it.state = LinkLifecycleState.COMPLETED }
-                poiRegistry.unregisterReminder(reminderId)
-            } else {
-                links.forEach { link ->
-                    // On préserve les POIs déjà notifiés (ALERTED) ou ignorés (SKIPPED).
-                    // Les liens qui étaient planifiés ou armés redeviennent CANDIDATE pour rester
-                    // éligibles lors des futures passes de l'ordonnanceur (ContextualGeofenceScheduler).
-                    if (link.state == LinkLifecycleState.ARMED || link.state == LinkLifecycleState.SCHEDULED) {
-                        link.state = LinkLifecycleState.CANDIDATE
-                    }
+        }
+
+        // 4. Gestion du cycle de vie des liens
+        val reminder = reminderRepositoryProvider.get().getById(reminderId)
+        val isPermanentlyInactive = reminder == null || reminder.status == com.remindly.domain.model.ReminderStatus.COMPLETED
+        val links = poiRegistry.getLinksForReminder(reminderId)
+        if (isPermanentlyInactive) {
+            links.forEach { it.state = LinkLifecycleState.COMPLETED }
+            poiRegistry.unregisterReminder(reminderId)
+        } else {
+            links.forEach { link ->
+                // On préserve les POIs déjà notifiés (ALERTED) ou ignorés (SKIPPED).
+                // Les liens qui étaient planifiés ou armés redeviennent CANDIDATE pour rester
+                // éligibles lors des futures passes de l'ordonnanceur (ContextualGeofenceScheduler).
+                if (link.state == LinkLifecycleState.ARMED || link.state == LinkLifecycleState.SCHEDULED) {
+                    link.state = LinkLifecycleState.CANDIDATE
                 }
             }
-            Log.d(tag, "removeGeofenceSuspend: Géofences du rappel $reminderId supprimées (${idsToRemove.size} IDs)")
-            appLogger.i("GEOFENCE_CLEANUP", "Géofences du rappel $reminderId désarmées (${idsToRemove.size} IDs)", reminderId)
-        } catch (e: Exception) {
-            Log.w(tag, "Erreur suppression géofences $reminderId via GMS: ${e.message}")
         }
+        Log.d(tag, "removeGeofenceSuspend: Géofences du rappel $reminderId supprimées (${idsToRemove.size} IDs, actualState restants: ${actualState.count})")
+        appLogger.i("GEOFENCE_CLEANUP", "Géofences du rappel $reminderId désarmées (${idsToRemove.size} IDs)", reminderId)
+
         synchronizeGeofences()
     }
 
@@ -538,18 +572,26 @@ class GeofenceManager @Inject constructor(
                     ?: fusedLocationClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null).await()
                 if (currentLoc != null) {
                     val distResults = FloatArray(1)
-                    for ((_, links) in linksMap) {
+                    for (rem in activeReminders) {
+                        // Élagage des vieux liens candidats à plus de 5 km de la position courante
+                        poiRegistry.pruneDistantCandidateLinks(rem.id, currentLoc.latitude, currentLoc.longitude, 5000f)
+
+                        val links = poiRegistry.getLinksForReminder(rem.id)
+                        linksMap[rem.id] = links
                         for (link in links) {
                             val poi = poiRegistry.getPoi(link.poiId) ?: continue
-                            Location.distanceBetween(
+                            val distM = PoiRegistry.computeDistanceMeters(
                                 currentLoc.latitude,
                                 currentLoc.longitude,
                                 poi.latitude,
-                                poi.longitude,
-                                distResults
+                                poi.longitude
                             )
-                            val distM = distResults[0]
-                            val score = (100 - (distM / 25f).toInt()).coerceIn(20, 95)
+                            // Au-delà de 3 km, le POI est hors de la fenêtre active immédiate -> score 0 (exclu du scheduler)
+                            val score = if (distM > 3000f) {
+                                0
+                            } else {
+                                (100 - (distM / 25f).toInt()).coerceIn(10, 95)
+                            }
                             link.contextScore = score
                         }
                     }
@@ -770,16 +812,24 @@ class GeofenceManager @Inject constructor(
         prefs.edit().remove("last_trigger_time_$reminderId").apply()
     }
 
+    suspend fun rearmGeofenceSuspend(reminder: Reminder) {
+        if (reminder.status != com.remindly.domain.model.ReminderStatus.ACTIVE) return
+        appLogger.i("GEOFENCE_REARM", "Réarmement séquentiel garanti pour '${reminder.placeLabel ?: reminder.text}' (Rappel #${reminder.id})", reminder.id)
+        removeGeofenceSuspend(reminder.id)
+        if (reminder.placeCategory != null) {
+            armCategoryPoIsSuspend(reminder)
+        } else {
+            addGeofenceSuspend(reminder)
+        }
+    }
+
     fun rearmGeofence(reminderId: Long) {
         scope.launch {
             try {
                 val repository = reminderRepositoryProvider.get()
                 val reminder = repository.getById(reminderId)
-                if (reminder != null && reminder.status == com.remindly.domain.model.ReminderStatus.ACTIVE) {
-                    appLogger.i("GEOFENCE_REARM", "Réarmement automatique du géofence pour '${reminder.placeLabel ?: reminder.text}' (Rappel #$reminderId)", reminderId)
-                    removeGeofence(reminderId)
-                    kotlinx.coroutines.delay(300)
-                    addGeofence(reminder)
+                if (reminder != null) {
+                    rearmGeofenceSuspend(reminder)
                 }
             } catch (e: Exception) {
                 Log.e(tag, "Erreur rearmGeofence pour #$reminderId: ${e.message}", e)
@@ -790,14 +840,9 @@ class GeofenceManager @Inject constructor(
     fun rearmGeofence(reminder: Reminder) {
         scope.launch {
             try {
-                if (reminder.status == com.remindly.domain.model.ReminderStatus.ACTIVE) {
-                    appLogger.i("GEOFENCE_REARM", "Réarmement automatique du géofence pour '${reminder.placeLabel ?: reminder.text}' (Rappel #${reminder.id})", reminder.id)
-                    removeGeofence(reminder.id)
-                    kotlinx.coroutines.delay(300)
-                    addGeofence(reminder)
-                }
+                rearmGeofenceSuspend(reminder)
             } catch (e: Exception) {
-                Log.e(tag, "Erreur rearmGeofence: ${e.message}", e)
+                Log.e(tag, "Erreur rearmGeofence pour #${reminder.id}: ${e.message}", e)
             }
         }
     }

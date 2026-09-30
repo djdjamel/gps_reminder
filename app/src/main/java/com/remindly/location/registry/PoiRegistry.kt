@@ -56,14 +56,11 @@ class PoiRegistry @Inject constructor() {
         pois[canonicalId]?.let { return it }
 
         // 2. Vérification par proximité spatiale et rapprochement multi-fournisseur (Google vs OSM)
-        val distanceBuffer = FloatArray(1)
         for (existing in pois.values) {
-            Location.distanceBetween(
+            val distanceM = computeDistanceMeters(
                 existing.latitude, existing.longitude,
-                latitude, longitude,
-                distanceBuffer
+                latitude, longitude
             )
-            val distanceM = distanceBuffer[0]
 
             // Si même lieu à moins de 35m avec concordance de nom ou de catégorie
             if (distanceM <= 35f && isLikelySamePlace(existing.name, name)) {
@@ -220,6 +217,42 @@ class PoiRegistry @Inject constructor() {
 
     fun getAllLinks(): List<ReminderPoiLink> = linksByReminder.values.flatMap { it.values }
 
+    fun clearAllActiveGeofences() {
+        for (geofence in activeGeofencesByRequest.values) {
+            pois[geofence.poiId]?.hardwareStatus = PoiHardwareStatus.RETIRED
+        }
+        activeGeofencesByPoi.clear()
+        activeGeofencesByRequest.clear()
+    }
+
+    /**
+     * Élimine les liens candidats devenus trop lointains (> maxDistanceMeters) par rapport à la position courante,
+     * tout en préservant scrupuleusement les liens ALERTED et SKIPPED (mémoire de session pour éviter les re-déclenchements).
+     */
+    fun pruneDistantCandidateLinks(reminderId: Long, currentLat: Double, currentLng: Double, maxDistanceMeters: Float = 5000f): Int {
+        val reminderLinks = linksByReminder[reminderId] ?: return 0
+        val toRemovePoiIds = mutableListOf<String>()
+
+        for ((poiId, link) in reminderLinks) {
+            // Ne jamais supprimer un lien déjà alerté ou ignoré pour préserver l'historique de session
+            if (link.state == LinkLifecycleState.ALERTED || link.state == LinkLifecycleState.SKIPPED) continue
+
+            val poi = pois[poiId] ?: continue
+            val distM = computeDistanceMeters(currentLat, currentLng, poi.latitude, poi.longitude)
+            if (distM > maxDistanceMeters) {
+                toRemovePoiIds.add(poiId)
+            }
+        }
+
+        for (poiId in toRemovePoiIds) {
+            val removedLink = reminderLinks.remove(poiId)
+            if (removedLink != null) {
+                linksByPoi[poiId]?.remove(removedLink)
+            }
+        }
+        return toRemovePoiIds.size
+    }
+
     fun clear() {
         pois.clear()
         linksByReminder.clear()
@@ -234,5 +267,21 @@ class PoiRegistry @Inject constructor() {
         if (n1 == n2) return true
         if (n1.contains(n2) || n2.contains(n1)) return true
         return false
+    }
+
+    companion object {
+        /**
+         * Calcul de distance géodésique pure Kotlin (Haversine) garantissant une précision métrique
+         * et une indépendance totale vis-à-vis des mocks Android / JVM.
+         */
+        fun computeDistanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
+            val dLat = Math.toRadians(lat2 - lat1)
+            val dLon = Math.toRadians(lon2 - lon1)
+            val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+            val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+            return (6371000.0 * c).toFloat()
+        }
     }
 }
