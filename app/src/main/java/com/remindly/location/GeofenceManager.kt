@@ -463,11 +463,11 @@ class GeofenceManager @Inject constructor(
         actualState = hardwareStateReconciler.reconcileGlobalPurge(actualState, removedFromGms)
     }
 
-    suspend fun removeSingleGeofenceSuspend(requestId: String) = geofenceMutex.withLock {
+    suspend fun removeSingleGeofenceSuspend(requestId: String): Boolean = geofenceMutex.withLock {
         removeSingleGeofenceSuspendInternal(requestId)
     }
 
-    private suspend fun removeSingleGeofenceSuspendInternal(requestId: String) {
+    private suspend fun removeSingleGeofenceSuspendInternal(requestId: String): Boolean {
         var removedFromGms = false
         try {
             geofencingClient.removeGeofences(listOf(requestId)).await()
@@ -486,6 +486,7 @@ class GeofenceManager @Inject constructor(
             editor.remove("wake_radius_$requestId")
             editor.apply()
         }
+        return removedFromGms
     }
 
     fun removeSingleGeofence(requestId: String) {
@@ -944,7 +945,13 @@ class GeofenceManager @Inject constructor(
     }
 
     private suspend fun completeStageDestinationAndArmPoIsInternal(requestId: String, reminder: Reminder) {
-        removeSingleGeofenceSuspendInternal(requestId)
+        val removed = removeSingleGeofenceSuspendInternal(requestId)
+        if (!removed) {
+            val warnMsg = "Échec suppression de l'étape $requestId via GMS. Armement des POIs de retour suspendu pour préserver la cohérence."
+            Log.w(tag, "completeStageDestinationAndArmPoIs: $warnMsg")
+            appLogger.w("STAGE_DEST_ERROR", warnMsg, reminder.id)
+            return
+        }
         armCategoryPoIsSuspendInternal(reminder)
     }
 
