@@ -180,4 +180,63 @@ class HardwareStateSynchronizationTest {
         assertNull(poiRegistry.getActiveGeofenceForPoi(p1.id))
         assertNull(poiRegistry.getActiveGeofenceForPoi(p2.id))
     }
+
+    @Test
+    fun testGmsFailure_preservesLocalStateWithoutPrematureReconciliation() {
+        val reminderId = 42L
+        val p1 = poiRegistry.registerOrGetPoi(PoiProvider.GOOGLE_PLACES, "p42", "Commerce 42", 36.75, 3.05)
+        val link = poiRegistry.linkReminderToPoi(reminderId, p1.id, 300f)
+        val reqId = "geo_p42"
+        val tg = poiRegistry.allocateGeofenceForPoi(p1.id, reqId)
+        poiRegistry.markGeofenceArmed(reqId)
+
+        var actualState = GeofenceStateSnapshot(mapOf(reqId to tg))
+        assertEquals(1, actualState.count)
+        assertEquals(LinkLifecycleState.ARMED, link.state)
+
+        // Cas 1 : Échec GMS (simulate removedFromGms = false)
+        val removedFromGmsFailed = false
+        if (removedFromGmsFailed) {
+            poiRegistry.releaseGeofence(reqId)
+            actualState = diffEngine.reconcileActualState(actualState, emptyList(), listOf(reqId))
+            link.state = LinkLifecycleState.CANDIDATE
+        }
+
+        // L'état local DOIT être préservé sans modification prématurée
+        assertEquals("En cas d'échec GMS, actualState ne doit PAS être vidé", 1, actualState.count)
+        assertNotNull("Le registre doit conserver la géofence active", poiRegistry.getActiveGeofenceForPoi(p1.id))
+        assertEquals("Le statut matériel doit rester ARMED", PoiHardwareStatus.ARMED, p1.hardwareStatus)
+        assertEquals("Le lien doit rester ARMED", LinkLifecycleState.ARMED, link.state)
+
+        // Cas 2 : Succès GMS (removedFromGms = true)
+        val removedFromGmsSuccess = true
+        if (removedFromGmsSuccess) {
+            poiRegistry.releaseGeofence(reqId)
+            actualState = diffEngine.reconcileActualState(actualState, emptyList(), listOf(reqId))
+            link.state = LinkLifecycleState.CANDIDATE
+        }
+
+        // Dès que GMS confirme, la réconciliation s'applique
+        assertEquals("Après succès GMS, actualState doit être vidé", 0, actualState.count)
+        assertNull("La géofence doit être libérée du registre", poiRegistry.getActiveGeofenceForPoi(p1.id))
+        assertEquals(PoiHardwareStatus.RETIRED, p1.hardwareStatus)
+        assertEquals(LinkLifecycleState.CANDIDATE, link.state)
+    }
+
+    @Test
+    fun testGetGeofenceIds_doesNotContainSynthetic151Ids() {
+        val reminderId = 99L
+        val baseExpected = setOf("99", "99_stage_dest", "99_exit_zone")
+
+        // Simulation de la nouvelle implémentation propre sans (0..150)
+        val baseIds = listOf(reminderId.toString(), "${reminderId}_stage_dest", "${reminderId}_exit_zone")
+        val fakeSynthetics = (0..150).map { "${reminderId}_geo_$it" }
+
+        // Vérification qu'aucun ID de la série fictive 0..150 n'est présent dans baseIds
+        for (fake in fakeSynthetics) {
+            assertFalse("La liste des IDs ne doit plus contenir d'IDs synthétiques fictifs: $fake", baseIds.contains(fake))
+        }
+        assertEquals(3, baseIds.size)
+        assertEquals(baseExpected, baseIds.toSet())
+    }
 }

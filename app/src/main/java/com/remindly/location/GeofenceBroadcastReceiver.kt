@@ -164,8 +164,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             android.util.Log.i("GeofenceReceiver", exitMsg)
                             appLogger.i("ROLLING_ZONE_EXIT", exitMsg, reminderId)
 
-                            // Désarmement séquentiel garanti de l'ancienne grappe avant l'armement de la nouvelle grappe
-                            geofenceManager.removeGeofenceSuspend(reminderId)
+                            // Désarmement séquentiel garanti sans synchronisation intermédiaire redondante
+                            geofenceManager.removeGeofenceSuspend(reminderId, synchronizeAfter = false)
                             geofenceManager.armCategoryPoIsSuspend(reminder)
                             continue
                         }
