@@ -110,8 +110,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             android.util.Log.i("GeofenceReceiver", stepMsg)
                             appLogger.success("STAGE_DEST_REACHED", stepMsg, reminderId)
 
-                            geofenceManager.removeSingleGeofence(geofence.requestId)
-                            geofenceManager.armCategoryPoIs(reminder)
+                            geofenceManager.removeSingleGeofenceSuspend(geofence.requestId)
+                            geofenceManager.armCategoryPoIsSuspend(reminder)
                             continue
                         }
 
@@ -164,9 +164,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             android.util.Log.i("GeofenceReceiver", exitMsg)
                             appLogger.i("ROLLING_ZONE_EXIT", exitMsg, reminderId)
 
-                            // Désarmement séquentiel garanti sans synchronisation intermédiaire redondante
-                            geofenceManager.removeGeofenceSuspend(reminderId, synchronizeAfter = false)
-                            geofenceManager.armCategoryPoIsSuspend(reminder)
+                            // Actualisation dynamique atomique de la fenêtre glissante (REMOVE -> SEARCH -> ARM -> SYNC sous un seul Mutex)
+                            geofenceManager.refreshCategoryWindow(reminder)
                             continue
                         }
 

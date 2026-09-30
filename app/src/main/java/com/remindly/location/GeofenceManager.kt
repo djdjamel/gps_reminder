@@ -29,6 +29,7 @@ import com.remindly.location.scheduler.ContextualGeofenceScheduler
 import com.remindly.location.scheduler.DiffOperation
 import com.remindly.location.scheduler.GeofenceDiffEngine
 import com.remindly.location.scheduler.GeofenceStateSnapshot
+import com.remindly.location.scheduler.HardwareStateReconciler
 import com.remindly.util.AppLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -55,7 +56,8 @@ class GeofenceManager @Inject constructor(
     private val scheduler: ContextualGeofenceScheduler,
     private val diffEngine: GeofenceDiffEngine,
     private val triggerCoordinator: TriggerCoordinator,
-    private val userActivityTracker: UserActivityTracker
+    private val userActivityTracker: UserActivityTracker,
+    private val hardwareStateReconciler: HardwareStateReconciler
 ) {
     private val tag = "GeofenceManager"
     private val geofencingClient: GeofencingClient = LocationServices.getGeofencingClient(context)
@@ -448,32 +450,53 @@ class GeofenceManager @Inject constructor(
     }
 
     private suspend fun removeAllGeofencesInternal() {
+        var removedFromGms = false
         try {
             geofencingClient.removeGeofences(geofencePendingIntent).await()
+            removedFromGms = true
             val msg = "Toutes les géofences ont été purgées auprès de Google Play Services"
             Log.i(tag, msg)
             appLogger.i("GEOFENCE_CLEANUP", msg)
         } catch (e: Exception) {
             Log.w(tag, "Avertissement lors de la purge globale des géofences: ${e.message}")
         }
-        actualState = GeofenceStateSnapshot()
-        poiRegistry.clearAllActiveGeofences()
+        actualState = hardwareStateReconciler.reconcileGlobalPurge(actualState, removedFromGms)
+    }
+
+    suspend fun removeSingleGeofenceSuspend(requestId: String) = geofenceMutex.withLock {
+        removeSingleGeofenceSuspendInternal(requestId)
+    }
+
+    private suspend fun removeSingleGeofenceSuspendInternal(requestId: String) {
+        var removedFromGms = false
+        try {
+            geofencingClient.removeGeofences(listOf(requestId)).await()
+            removedFromGms = true
+            Log.d(tag, "Géofence unique $requestId supprimée avec succès auprès de GMS")
+        } catch (e: Exception) {
+            Log.w(tag, "Erreur suppression géofence unique $requestId via GMS: ${e.message}")
+        }
+        actualState = hardwareStateReconciler.reconcileSingleRemoval(actualState, requestId, removedFromGms)
+        if (removedFromGms) {
+            val editor = prefs.edit()
+            editor.remove("place_name_$requestId")
+            editor.remove("place_lat_$requestId")
+            editor.remove("place_lng_$requestId")
+            editor.remove("semantic_radius_$requestId")
+            editor.remove("wake_radius_$requestId")
+            editor.apply()
+        }
     }
 
     fun removeSingleGeofence(requestId: String) {
-        geofencingClient.removeGeofences(listOf(requestId))
-            .addOnSuccessListener {
-                Log.d(tag, "Géofence unique $requestId supprimée")
-            }
-            .addOnFailureListener { e ->
-                Log.w(tag, "Erreur suppression géofence $requestId: ${e.message}")
-            }
+        scope.launch {
+            removeSingleGeofenceSuspend(requestId)
+        }
     }
 
     internal fun getGeofenceIdsForReminder(reminderId: Long): List<String> {
         val storedIds = prefs.getStringSet("geofences_$reminderId", emptySet()) ?: emptySet()
         val activeIds = prefs.getStringSet("active_geofences_$reminderId", emptySet()) ?: emptySet()
-        val baseIds = listOf(reminderId.toString(), "${reminderId}_stage_dest", "${reminderId}_exit_zone")
         val prefix = "${reminderId}_"
         val dynamicIds = prefs.all.keys
             .filter { it.startsWith("place_name_${prefix}") || it.startsWith("place_lat_${prefix}") || it.startsWith("place_lng_${prefix}") }
@@ -485,7 +508,14 @@ class GeofenceManager @Inject constructor(
             reqId == reminderId.toString() || reqId.startsWith(prefix) || linkedPoiIds.contains(tracked.poiId)
         }.keys
 
-        return (storedIds + activeIds + baseIds + dynamicIds + poiGeofenceIds + actualIds).toSet().toList()
+        return computeGeofenceIds(
+            reminderId = reminderId,
+            storedIds = storedIds,
+            activeIds = activeIds,
+            dynamicIds = dynamicIds,
+            poiGeofenceIds = poiGeofenceIds,
+            actualIds = actualIds
+        )
     }
 
     private fun cleanupPrefsForReminder(reminderId: Long, idsToRemove: List<String>) {
@@ -534,41 +564,20 @@ class GeofenceManager @Inject constructor(
                 Log.w(tag, "Échec suppression géofences $reminderId via GMS: ${e.message}")
                 appLogger.w("GEOFENCE_ERROR", "Échec suppression GMS pour #$reminderId: ${e.message}", reminderId)
             }
-
-            if (removedFromGms) {
-                // 1. Libération matérielle des géofences dans le PoiRegistry confirmée par GMS
-                idsToRemove.forEach { reqId ->
-                    poiRegistry.releaseGeofence(reqId)
-                }
-
-                // 2. Réconciliation atomique de actualState pour Google Play Services
-                actualState = diffEngine.reconcileActualState(actualState, emptyList(), idsToRemove)
-
-                // 3. Nettoyage des SharedPreferences
-                cleanupPrefsForReminder(reminderId, idsToRemove)
-            }
         } else {
             removedFromGms = true
         }
 
-        // 4. Gestion du cycle de vie des liens si la désactivation matérielle est confirmée
+        val reminder = reminderRepositoryProvider.get().getById(reminderId)
+        actualState = hardwareStateReconciler.reconcileReminderRemoval(
+            currentActualState = actualState,
+            idsToRemove = idsToRemove,
+            removedFromGms = removedFromGms,
+            reminder = reminder
+        )
+
         if (removedFromGms) {
-            val reminder = reminderRepositoryProvider.get().getById(reminderId)
-            val isPermanentlyInactive = reminder == null || reminder.status == com.remindly.domain.model.ReminderStatus.COMPLETED
-            val links = poiRegistry.getLinksForReminder(reminderId)
-            if (isPermanentlyInactive) {
-                links.forEach { it.state = LinkLifecycleState.COMPLETED }
-                poiRegistry.unregisterReminder(reminderId)
-            } else {
-                links.forEach { link ->
-                    // On préserve les POIs déjà notifiés (ALERTED) ou ignorés (SKIPPED).
-                    // Les liens qui étaient planifiés ou armés redeviennent CANDIDATE pour rester
-                    // éligibles lors des futures passes de l'ordonnanceur (ContextualGeofenceScheduler).
-                    if (link.state == LinkLifecycleState.ARMED || link.state == LinkLifecycleState.SCHEDULED) {
-                        link.state = LinkLifecycleState.CANDIDATE
-                    }
-                }
-            }
+            cleanupPrefsForReminder(reminderId, idsToRemove)
             Log.d(tag, "removeGeofenceSuspend: Géofences du rappel $reminderId supprimées (${idsToRemove.size} IDs, actualState restants: ${actualState.count})")
             appLogger.i("GEOFENCE_CLEANUP", "Géofences du rappel $reminderId désarmées (${idsToRemove.size} IDs)", reminderId)
         } else {
@@ -891,6 +900,51 @@ class GeofenceManager @Inject constructor(
             } catch (e: Exception) {
                 Log.e(tag, "Erreur rearmGeofence pour #${reminder.id}: ${e.message}", e)
             }
+        }
+    }
+
+    /**
+     * Transaction atomique et sérialisée pour la rotation dynamique de la fenêtre glissante.
+     * Exécute sous un verrou UNIQUE du Mutex :
+     * 1. Désarmement de la fenêtre actuelle auprès de GMS (sans synchronisation intermédiaire prématurée).
+     * 2. Réconciliation locale conditionnée au succès matériel.
+     * 3. Recherche des POIs et de la nouvelle zone de sortie autour de la position actuelle.
+     * 4. Calcul de l'allocation et synchronisation matérielle finale vers GMS.
+     *
+     * Garantit qu'aucune autre coroutine ne peut s'intercaler entre la suppression et l'armement.
+     */
+    suspend fun refreshCategoryWindow(reminder: Reminder) = geofenceMutex.withLock {
+        refreshCategoryWindowInternal(reminder)
+    }
+
+    private suspend fun refreshCategoryWindowInternal(reminder: Reminder) {
+        if (reminder.status != com.remindly.domain.model.ReminderStatus.ACTIVE) {
+            val msg = "refreshCategoryWindow ignoré: rappel #${reminder.id} n'est pas actif (status=${reminder.status})"
+            Log.d(tag, msg)
+            return
+        }
+        val logMsg = "Actualisation atomique de la fenêtre glissante pour '${reminder.placeLabel ?: reminder.text}' (Rappel #${reminder.id})"
+        Log.i(tag, logMsg)
+        appLogger.i("ROLLING_WINDOW_REFRESH", logMsg, reminder.id)
+        removeGeofenceSuspendInternal(reminder.id, synchronizeAfter = false)
+        armCategoryPoIsSuspendInternal(reminder)
+    }
+
+    companion object {
+        /**
+         * Construit de manière déterministe la liste des identifiants de géofences à retirer pour un rappel,
+         * en agrégeant toutes les sources concrètes existantes (sans aucun identifiant synthétique arbitraire).
+         */
+        fun computeGeofenceIds(
+            reminderId: Long,
+            storedIds: Set<String> = emptySet(),
+            activeIds: Set<String> = emptySet(),
+            dynamicIds: Set<String> = emptySet(),
+            poiGeofenceIds: Set<String> = emptySet(),
+            actualIds: Set<String> = emptySet()
+        ): List<String> {
+            val baseIds = listOf(reminderId.toString(), "${reminderId}_stage_dest", "${reminderId}_exit_zone")
+            return (storedIds + activeIds + baseIds + dynamicIds + poiGeofenceIds + actualIds).toSet().toList()
         }
     }
 }
